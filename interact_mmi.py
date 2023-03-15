@@ -14,7 +14,7 @@ from transformers.modeling_gpt2 import GPT2Config, GPT2LMHeadModel
 from transformers import BertTokenizer
 from os.path import join, exists
 from itertools import zip_longest, chain
-from dataset import MyDataset
+from data_loader import MyDataset
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import CrossEntropyLoss
 from sklearn.model_selection import train_test_split

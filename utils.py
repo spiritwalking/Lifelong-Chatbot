@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+import torch.nn.utils.rnn as rnn_utils
 
 
 def create_logger(log_path):
@@ -26,6 +27,12 @@ def create_logger(log_path):
     logger.addHandler(console)
 
     return logger
+
+
+def collate_fn(batch):
+    input_ids = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=0)
+    labels = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=-100)
+    return input_ids, labels
 
 
 class EarlyStopping:

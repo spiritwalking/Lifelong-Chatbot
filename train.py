@@ -10,33 +10,30 @@ from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 from torch.nn import DataParallel
 import transformers
-import pickle
-import sys
-from utils import EarlyStopping
+
+from utils import EarlyStopping, create_logger, collate_fn
 from sklearn.model_selection import train_test_split
 from data_parallel import BalancedDataParallel
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
-import torch.nn.utils.rnn as rnn_utils
+
 import numpy as np
-from dataset import MyDataset
-from utils import create_logger
+from data_loader import MyDataset
+from data_loader import get_dataloader
 
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', default='3', type=str, required=False, help='设置使用哪些显卡')
-    parser.add_argument('--no_cuda', action='store_true', help='不使用GPU进行训练')
+    parser.add_argument('--device_ids', default='2,3', type=str, required=False, help='设置使用哪些显卡')
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False,
                         help='词表路径')
     parser.add_argument('--model_config', default='config/config.json', type=str, required=False,
                         help='设置模型参数')
-    parser.add_argument('--train_path', default='data/train.pkl', type=str, required=False, help='训练集路径')
+    parser.add_argument('--train_path', default='data/my_train.pkl', type=str, required=False, help='训练集路径')
     parser.add_argument('--max_len', default=150, type=int, required=False, help='训练时，输入数据的最大长度')
-
     parser.add_argument('--log_path', default='data/train.log', type=str, required=False, help='训练日志存放位置')
-    parser.add_argument('--log', default=True, help="是否记录日志")
-    parser.add_argument('--ignore_index', default=-100, type=int, required=False, help='对于ignore_index的label token不计算梯度')
+    parser.add_argument('--ignore_index', default=-100, type=int, required=False,
+                        help='对于ignore_index的label token不计算梯度')
     # parser.add_argument('--input_len', default=200, type=int, required=False, help='输入的长度')
     parser.add_argument('--epochs', default=100, type=int, required=False, help='训练的最大轮次')
     parser.add_argument('--batch_size', default=4, type=int, required=False, help='训练的batch size')
@@ -46,24 +43,16 @@ def set_args():
     parser.add_argument('--log_step', default=1, type=int, required=False, help='多少步汇报一次loss')
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, required=False, help='梯度积累')
     parser.add_argument('--max_grad_norm', default=2.0, type=float, required=False)
-    parser.add_argument('--save_model_path', default='model', type=str, required=False,
-                        help='模型输出路径')
-    parser.add_argument('--pretrained_model', default='', type=str, required=False,
-                        help='预训练的模型的路径')
+    parser.add_argument('--save_model_path', default='model', type=str, required=False, help='模型输出路径')
+    parser.add_argument('--pretrained_model', default='', type=str, required=False, help='预训练的模型的路径')
     # parser.add_argument('--seed', type=int, default=None, help='设置种子用于生成随机数，以使得训练的结果是确定的')
     parser.add_argument('--num_workers', type=int, default=0, help="dataloader加载数据时使用的线程数量")
-    parser.add_argument('--patience', type=int, default=0, help="用于early stopping,设为0时,不进行early stopping.early stop得到的模型的生成效果不一定会更好。")
+    parser.add_argument('--patience', type=int, default=0, help="用于early stopping,设为0时,不进行early stopping")
     parser.add_argument('--warmup_steps', type=int, default=4000, help='warm up步数')
     # parser.add_argument('--label_smoothing', default=True, action='store_true', help='是否进行标签平滑')
     parser.add_argument('--val_num', type=int, default=8000, help='验证集大小')
     args = parser.parse_args()
     return args
-
-
-def collate_fn(batch):
-    input_ids = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=0)
-    labels = rnn_utils.pad_sequence(batch, batch_first=True, padding_value=-100)
-    return input_ids, labels
 
 
 # def padding_batch(data_list, pad_id):
@@ -86,32 +75,7 @@ def collate_fn(batch):
 #     return new_data_list
 
 
-def load_dataset(logger, args):
-    """
-    加载训练集和验证集
-    """
-    logger.info("loading training dataset and validating dataset")
-    train_path = args.train_path
-
-    with open(train_path, "rb") as f:
-        input_list = pickle.load(f)
-
-    # 划分训练集与验证集
-    val_num = args.val_num
-    input_list_train = input_list[val_num:]
-    input_list_val = input_list[:val_num]
-    # test
-    # input_list_train = input_list_train[:24]
-    # input_list_val = input_list_val[:24]
-
-    train_dataset = MyDataset(input_list_train, args.max_len)
-    val_dataset = MyDataset(input_list_val, args.max_len)
-
-    return train_dataset, val_dataset
-
-
-def train_epoch(model, train_dataloader, optimizer, scheduler, logger,
-                epoch, args):
+def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, args):
     model.train()
     device = args.device
     # pad_id = args.pad_id
@@ -162,7 +126,8 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger,
             if (batch_idx + 1) % args.log_step == 0:
                 logger.info(
                     "batch {} of epoch {}, loss {}, batch_acc {}, lr {}".format(
-                        batch_idx + 1, epoch + 1, loss.item() * args.gradient_accumulation_steps, batch_acc, scheduler.get_lr()))
+                        batch_idx + 1, epoch + 1, loss.item() * args.gradient_accumulation_steps, batch_acc,
+                        scheduler.get_lr()))
 
             del input_ids, outputs
 
@@ -221,7 +186,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
             # 记录当前epoch的平均loss
             epoch_mean_loss = total_loss / len(validate_dataloader)
             logger.info(
-                "validate epoch {}: loss {}".format(epoch+1, epoch_mean_loss))
+                "validate epoch {}: loss {}".format(epoch + 1, epoch_mean_loss))
             epoch_finish_time = datetime.now()
             logger.info('time for validating one epoch: {}'.format(epoch_finish_time - epoch_start_time))
             return epoch_mean_loss
@@ -235,13 +200,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
             raise exception
 
 
-def train(model, logger, train_dataset, validate_dataset, args):
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=collate_fn,
-        drop_last=True
-    )
-    validate_dataloader = DataLoader(validate_dataset, batch_size=args.batch_size, shuffle=True,
-                                     num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True)
+def train(model, logger, train_dataloader, validate_dataloader, args):
     early_stopping = EarlyStopping(args.patience, verbose=True, save_path=args.save_model_path)
     t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
     optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
@@ -329,27 +288,12 @@ def calculate_acc(logit, labels, ignore_index=-100):
 
 
 def main():
-    # 初始化参数
     args = set_args()
-
-    # 设置使用哪些显卡进行训练
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
-
-    args.cuda = not args.no_cuda
-
-    if args.batch_size < 2048 and args.warmup_steps <= 4000:
-        print('[Warning] The warmup steps may be not enough.\n'
-              '(sz_b, warmup) = (2048, 4000) is the official setting.\n'
-              'Using smaller batch w/o longer warmup may cause '
-              'the warmup stage ends with only little data trained.')
-
-    # 创建日志对象
     logger = create_logger(args.log_path)
-    # 当用户使用GPU,并且GPU可用时
-    args.cuda = torch.cuda.is_available() and not args.no_cuda
-    device = 'cuda:0' if args.cuda else 'cpu'
-    args.device = device
-    logger.info('using device:{}'.format(device))
+
+    # 创建模型的输出目录
+    if not os.path.exists(args.save_model_path):
+        os.mkdir(args.save_model_path)
 
     # 初始化tokenizer
     tokenizer = BertTokenizerFast(vocab_file=args.vocab_path, sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]")
@@ -357,9 +301,10 @@ def main():
     args.pad_id = tokenizer.pad_token_id
     args.cls_id = tokenizer.cls_token_id
 
-    # 创建模型的输出目录
-    if not os.path.exists(args.save_model_path):
-        os.mkdir(args.save_model_path)
+    # 设置使用哪些显卡进行训练
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device_ids  # 设置可见GPU
+    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'  # 设置训练主设备
+    logger.info('using device: {}'.format(args.device))
 
     # 创建模型
     if args.pretrained_model:  # 加载预训练模型
@@ -367,31 +312,26 @@ def main():
     else:  # 初始化模型
         model_config = GPT2Config.from_json_file(args.model_config)
         model = GPT2LMHeadModel(config=model_config)
-    model = model.to(device)
     logger.info('model config:\n{}'.format(model.config.to_json_string()))
     assert model.config.vocab_size == tokenizer.vocab_size
 
     # 并行训练模型
-    if args.cuda and torch.cuda.device_count() > 1:
-        model = DataParallel(model).cuda()
-        # model = BalancedDataParallel(args.gpu0_bsz, model, dim=0).cuda()
-        logger.info("use GPU {} to train".format(args.device))
+    if torch.cuda.device_count() > 1:
+        model = DataParallel(model)
+        logger.info("training with DataParallel on cuda " + args.device_ids)
+    model = model.to(args.device)
 
     # 计算模型参数数量
-    num_parameters = 0
-    parameters = model.parameters()
-    for parameter in parameters:
-        num_parameters += parameter.numel()
+    num_parameters = sum(p.numel() for p in model.parameters())
     logger.info('number of model parameters: {}'.format(num_parameters))
 
     # 记录参数设置
     logger.info("args:{}".format(args))
 
     # 加载训练集和验证集
-    # ========= Loading Dataset ========= #
-    train_dataset, validate_dataset = load_dataset(logger, args)
+    train_dataloader, validate_dataloader = get_dataloader(args, collate_fn, logger)
 
-    train(model, logger, train_dataset, validate_dataset, args)
+    train(model, logger, train_dataloader, validate_dataloader, args)
 
 
 if __name__ == '__main__':
