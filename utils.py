@@ -1,10 +1,36 @@
 import numpy as np
-import torch
-from os.path import join
-import os
+import logging
+
+
+def create_logger(log_path):
+    """
+    将日志输出到日志文件和控制台
+    """
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s')
+
+    # 创建一个handler，用于写入日志文件
+    file_handler = logging.FileHandler(
+        filename=log_path)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+
+    # 创建一个handler，用于将日志输出到控制台
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    console.setFormatter(formatter)
+    logger.addHandler(console)
+
+    return logger
+
 
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
+
     def __init__(self, patience=7, verbose=False, delta=0, save_path="."):
         """
         Args:

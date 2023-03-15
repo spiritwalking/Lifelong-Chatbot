@@ -1,10 +1,7 @@
 import argparse
-import math
-import time
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import logging
 from datetime import datetime
 import os
 from torch.utils.data import Dataset, DataLoader
@@ -15,15 +12,15 @@ from torch.nn import DataParallel
 import transformers
 import pickle
 import sys
-from pytorchtools import EarlyStopping
+from utils import EarlyStopping
 from sklearn.model_selection import train_test_split
 from data_parallel import BalancedDataParallel
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
-import pandas as pd
 import torch.nn.utils.rnn as rnn_utils
 import numpy as np
 from dataset import MyDataset
+from utils import create_logger
 
 
 def set_args():
@@ -61,32 +58,6 @@ def set_args():
     parser.add_argument('--val_num', type=int, default=8000, help='验证集大小')
     args = parser.parse_args()
     return args
-
-
-def create_logger(args):
-    """
-    将日志输出到日志文件和控制台
-    """
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s')
-
-    # 创建一个handler，用于写入日志文件
-    file_handler = logging.FileHandler(
-        filename=args.log_path)
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-
-    # 创建一个handler，用于将日志输出到控制台
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-
-    return logger
 
 
 def collate_fn(batch):
@@ -367,13 +338,13 @@ def main():
     args.cuda = not args.no_cuda
 
     if args.batch_size < 2048 and args.warmup_steps <= 4000:
-        print('[Warning] The warmup steps may be not enough.\n' \
-              '(sz_b, warmup) = (2048, 4000) is the official setting.\n' \
-              'Using smaller batch w/o longer warmup may cause ' \
+        print('[Warning] The warmup steps may be not enough.\n'
+              '(sz_b, warmup) = (2048, 4000) is the official setting.\n'
+              'Using smaller batch w/o longer warmup may cause '
               'the warmup stage ends with only little data trained.')
 
     # 创建日志对象
-    logger = create_logger(args)
+    logger = create_logger(args.log_path)
     # 当用户使用GPU,并且GPU可用时
     args.cuda = torch.cuda.is_available() and not args.no_cuda
     device = 'cuda:0' if args.cuda else 'cpu'
