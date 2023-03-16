@@ -4,88 +4,49 @@ import torch.nn.functional as F
 import torch.optim as optim
 from datetime import datetime
 import os
-from torch.utils.data import Dataset, DataLoader
 from os.path import join, exists
-from torch.nn import CrossEntropyLoss
-from tqdm import tqdm
-from torch.nn import DataParallel
+import torch.nn as nn
 import transformers
-
-from utils import EarlyStopping, create_logger, collate_fn
-from sklearn.model_selection import train_test_split
-from data_parallel import BalancedDataParallel
+from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed, calculate_acc
 from transformers import GPT2TokenizerFast, GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
-
-import numpy as np
-from data_loader import MyDataset
 from data_loader import get_dataloader
 
 
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--device_ids', default='2,3', type=str, required=False, help='设置使用哪些显卡')
-    parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False,
-                        help='词表路径')
-    parser.add_argument('--model_config', default='config/config.json', type=str, required=False,
-                        help='设置模型参数')
+    parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False, help='词表路径')
+    parser.add_argument('--model_config', default='config/config.json', type=str, required=False, help='设置模型参数')
     parser.add_argument('--train_path', default='data/my_train.pkl', type=str, required=False, help='训练集路径')
     parser.add_argument('--max_len', default=150, type=int, required=False, help='训练时，输入数据的最大长度')
     parser.add_argument('--log_path', default='data/train.log', type=str, required=False, help='训练日志存放位置')
-    parser.add_argument('--ignore_index', default=-100, type=int, required=False,
-                        help='对于ignore_index的label token不计算梯度')
+    parser.add_argument('--ignore_index', default=-100, type=int, required=False, help='对于ignore_index的label token不计算梯度')
     # parser.add_argument('--input_len', default=200, type=int, required=False, help='输入的长度')
     parser.add_argument('--epochs', default=100, type=int, required=False, help='训练的最大轮次')
     parser.add_argument('--batch_size', default=4, type=int, required=False, help='训练的batch size')
-    parser.add_argument('--gpu0_bsz', default=10, type=int, required=False, help='0号卡的batch size')
     parser.add_argument('--lr', default=2.6e-5, type=float, required=False, help='学习率')
     parser.add_argument('--eps', default=1.0e-09, type=float, required=False, help='衰减率')
-    parser.add_argument('--log_step', default=1, type=int, required=False, help='多少步汇报一次loss')
+    parser.add_argument('--log_step', default=100, type=int, required=False, help='多少步汇报一次loss')
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, required=False, help='梯度积累')
-    parser.add_argument('--max_grad_norm', default=2.0, type=float, required=False)
+    parser.add_argument('--max_grad_norm', default=2.0, type=float, required=False, help='设置最大梯度范数')
     parser.add_argument('--save_model_path', default='model', type=str, required=False, help='模型输出路径')
     parser.add_argument('--pretrained_model', default='', type=str, required=False, help='预训练的模型的路径')
-    # parser.add_argument('--seed', type=int, default=None, help='设置种子用于生成随机数，以使得训练的结果是确定的')
     parser.add_argument('--num_workers', type=int, default=0, help="dataloader加载数据时使用的线程数量")
     parser.add_argument('--patience', type=int, default=0, help="用于early stopping,设为0时,不进行early stopping")
     parser.add_argument('--warmup_steps', type=int, default=4000, help='warm up步数')
-    # parser.add_argument('--label_smoothing', default=True, action='store_true', help='是否进行标签平滑')
     parser.add_argument('--val_num', type=int, default=8000, help='验证集大小')
     args = parser.parse_args()
     return args
 
 
-# def padding_batch(data_list, pad_id):
-#     """
-#     使用pad_id将data_list的每条数据，填充至data_list中最长的长度
-#     :param data_list:
-#     :param pad_id:
-#     :return:
-#     """
-#     # 统计data_list中的最大长度
-#     max_len = 0
-#     for data in data_list:
-#         max_len = max_len if max_len > len(data) else len(data)
-#
-#     # 对数据进行padding
-#     new_data_list = []
-#     for data in data_list:
-#         new_data = data + [pad_id] * (max_len - len(data))
-#         new_data_list.append(new_data)
-#     return new_data_list
-
-
 def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, args):
     model.train()
     device = args.device
-    # pad_id = args.pad_id
-    # sep_id = args.sep_id
     ignore_index = args.ignore_index
     epoch_start_time = datetime.now()
     total_loss = 0  # 记录下整个epoch的loss的总和
 
-    # epoch_correct_num:每个epoch中,output预测正确的word的数量
-    # epoch_total_num: 每个epoch中,output预测的word的总数量
     epoch_correct_num, epoch_total_num = 0, 0
 
     for batch_idx, (input_ids, labels) in enumerate(train_dataloader):
@@ -93,10 +54,9 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
         try:
             input_ids = input_ids.to(device)
             labels = labels.to(device)
-            outputs = model.forward(input_ids, labels=labels)
+            outputs = model(input_ids, labels=labels)
             logits = outputs.logits
-            loss = outputs.loss
-            loss = loss.mean()
+            loss = outputs.loss.mean()
 
             # 统计该batch的预测token的正确数与总数
             batch_correct_num, batch_total_num = calculate_acc(logits, labels, ignore_index=ignore_index)
@@ -110,24 +70,20 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
 
+            # 反向传播，累积梯度
             loss.backward()
-            # 梯度裁剪
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)  # 防止梯度爆炸
 
-            # 进行一定step的梯度累计之后，更新参数
+            # 进行一定step的梯度累积之后，梯度下降更新参数
             if (batch_idx + 1) % args.gradient_accumulation_steps == 0:
-                # 更新参数
                 optimizer.step()
-                # 更新学习率
                 scheduler.step()
-                # 清空梯度信息
                 optimizer.zero_grad()
 
             if (batch_idx + 1) % args.log_step == 0:
-                logger.info(
-                    "batch {} of epoch {}, loss {}, batch_acc {}, lr {}".format(
-                        batch_idx + 1, epoch + 1, loss.item() * args.gradient_accumulation_steps, batch_acc,
-                        scheduler.get_lr()))
+                logger.info("batch {} of epoch {}, loss {:.6}, batch_acc {:.6}, lr {}".format(
+                    batch_idx + 1, epoch + 1, loss.item() * args.gradient_accumulation_steps,
+                    batch_acc, scheduler.get_lr()))
 
             del input_ids, outputs
 
@@ -144,18 +100,15 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
     epoch_mean_loss = total_loss / len(train_dataloader)
     epoch_mean_acc = epoch_correct_num / epoch_total_num
     logger.info(
-        "epoch {}: loss {}, predict_acc {}".format(epoch + 1, epoch_mean_loss, epoch_mean_acc))
+        "epoch {}: loss {:.6}, predict_acc {:.6}".format(epoch + 1, epoch_mean_loss, epoch_mean_acc))
 
     # save model
     logger.info('saving model for epoch {}'.format(epoch + 1))
     model_path = join(args.save_model_path, 'epoch{}'.format(epoch + 1))
-    if not os.path.exists(model_path):
-        os.mkdir(model_path)
-    model_to_save = model.module if hasattr(model, 'module') else model
-    model_to_save.save_pretrained(model_path)
-    logger.info('epoch {} finished'.format(epoch + 1))
+    save_model(model_path, model)
+
     epoch_finish_time = datetime.now()
-    logger.info('time for one epoch: {}'.format(epoch_finish_time - epoch_start_time))
+    logger.info('epoch {} finished, spend time: {}'.format(epoch + 1, epoch_finish_time - epoch_start_time))
 
     return epoch_mean_loss
 
@@ -164,9 +117,6 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
     logger.info("start validating")
     model.eval()
     device = args.device
-    # pad_id = args.pad_id
-    # sep_id = args.sep_id
-    ignore_index = args.ignore_index
     epoch_start_time = datetime.now()
     total_loss = 0
     # 捕获cuda out of memory exception
@@ -175,7 +125,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
             for batch_idx, (input_ids, labels) in enumerate(validate_dataloader):
                 input_ids = input_ids.to(device)
                 labels = labels.to(device)
-                outputs = model.forward(input_ids, labels=labels)
+                outputs = model(input_ids, labels=labels)
                 logits = outputs.logits
                 loss = outputs.loss
                 loss = loss.mean()
@@ -185,11 +135,11 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
 
             # 记录当前epoch的平均loss
             epoch_mean_loss = total_loss / len(validate_dataloader)
-            logger.info(
-                "validate epoch {}: loss {}".format(epoch + 1, epoch_mean_loss))
+            logger.info("validate epoch {}: loss {}".format(epoch + 1, epoch_mean_loss))
             epoch_finish_time = datetime.now()
             logger.info('time for validating one epoch: {}'.format(epoch_finish_time - epoch_start_time))
             return epoch_mean_loss
+
     except RuntimeError as exception:
         if "out of memory" in str(exception):
             logger.info("WARNING: ran out of memory")
@@ -201,12 +151,11 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
 
 
 def train(model, logger, train_dataloader, validate_dataloader, args):
-    early_stopping = EarlyStopping(args.patience, verbose=True, save_path=args.save_model_path)
-    t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
+    early_stopping = EarlyStopping(args.patience, save_path=args.save_model_path)
+    total_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
     optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
-    # scheduler = transformers.WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
     scheduler = transformers.get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
+        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps
     )
 
     logger.info('starting training')
@@ -215,7 +164,6 @@ def train(model, logger, train_dataloader, validate_dataloader, args):
     train_losses, validate_losses = [], []
     # 记录验证集的最小loss
     best_val_loss = 10000
-    # 开始训练
     for epoch in range(args.epochs):
         # ========== train ========== #
         train_loss = train_epoch(
@@ -235,59 +183,22 @@ def train(model, logger, train_dataloader, validate_dataloader, args):
             best_val_loss = validate_loss
             logger.info('saving current best model for epoch {}'.format(epoch + 1))
             model_path = join(args.save_model_path, 'min_ppl_model'.format(epoch + 1))
-            if not os.path.exists(model_path):
-                os.mkdir(model_path)
-            model_to_save = model.module if hasattr(model, 'module') else model
-            model_to_save.save_pretrained(model_path)
+            save_model(model_path, model)
 
-        #  如果patience=0,则不进行early stopping
         if args.patience == 0:
             continue
         early_stopping(validate_loss, model)
         if early_stopping.early_stop:
             logger.info("Early stopping")
             break
+
     logger.info('training finished')
     logger.info("train_losses:{}".format(train_losses))
     logger.info("validate_losses:{}".format(validate_losses))
 
 
-def caculate_loss(logit, target, pad_idx, smoothing=True):
-    if smoothing:
-        logit = logit[..., :-1, :].contiguous().view(-1, logit.size(2))
-        target = target[..., 1:].contiguous().view(-1)
-
-        eps = 0.1
-        n_class = logit.size(-1)
-
-        one_hot = torch.zeros_like(logit).scatter(1, target.view(-1, 1), 1)
-        one_hot = one_hot * (1 - eps) + (1 - one_hot) * eps / (n_class - 1)
-        log_prb = F.log_softmax(logit, dim=1)
-
-        non_pad_mask = target.ne(pad_idx)
-        loss = -(one_hot * log_prb).sum(dim=1)
-        loss = loss.masked_select(non_pad_mask).mean()  # average later
-    else:
-        # loss = F.cross_entropy(predict_logit, target, ignore_index=pad_idx)
-        logit = logit[..., :-1, :].contiguous().view(-1, logit.size(-1))
-        labels = target[..., 1:].contiguous().view(-1)
-        loss = F.cross_entropy(logit, labels, ignore_index=pad_idx)
-    return loss
-
-
-def calculate_acc(logit, labels, ignore_index=-100):
-    logit = logit[..., :-1, :].contiguous().view(-1, logit.size(-1))
-    labels = labels[..., 1:].contiguous().view(-1)
-
-    _, logit = logit.max(dim=-1)  # 对于每条数据，返回最大的index
-    # 进行非运算，返回一个tensor，若labels的第i个位置为pad_id，则置为0，否则为1
-    non_pad_mask = labels.ne(ignore_index)
-    n_correct = logit.eq(labels).masked_select(non_pad_mask).sum().item()
-    n_word = non_pad_mask.sum().item()
-    return n_correct, n_word
-
-
 def main():
+    fix_seed(42)
     args = set_args()
     logger = create_logger(args.log_path)
 
@@ -309,15 +220,17 @@ def main():
     # 创建模型
     if args.pretrained_model:  # 加载预训练模型
         model = GPT2LMHeadModel.from_pretrained(args.pretrained_model)
+        logger.info('fine-tune pretrained model')
     else:  # 初始化模型
         model_config = GPT2Config.from_json_file(args.model_config)
         model = GPT2LMHeadModel(config=model_config)
+        logger.info('train a model from scratch')
     logger.info('model config:\n{}'.format(model.config.to_json_string()))
     assert model.config.vocab_size == tokenizer.vocab_size
 
     # 并行训练模型
     if torch.cuda.device_count() > 1:
-        model = DataParallel(model)
+        model = nn.DataParallel(model)
         logger.info("training with DataParallel on cuda " + args.device_ids)
     model = model.to(args.device)
 

@@ -31,11 +31,11 @@ def get_dataset(args):
     all_dataset = MyDataset(input_list, args.max_len)
 
     # debug with small dataset
-    lengths = [300, 100, len(all_dataset)-400]
-    train_dataset, val_dataset, _ = random_split(all_dataset, lengths)
+    # lengths = [1000, 100, len(all_dataset)-1100]
+    # train_dataset, val_dataset, _ = random_split(all_dataset, lengths)
 
-    # lengths = [len(all_dataset) - val_num, val_num]
-    # train_dataset, val_dataset = random_split(all_dataset, lengths)
+    lengths = [len(all_dataset) - val_num, val_num]
+    train_dataset, val_dataset = random_split(all_dataset, lengths)
 
     return train_dataset, val_dataset
 
