@@ -2,9 +2,9 @@ from transformers import BertTokenizerFast
 import argparse
 import pickle
 from tqdm import tqdm
-from transformers import GPT2TokenizerFast
 import numpy as np
 from utils import create_logger
+import json
 
 
 def preprocess():
@@ -16,6 +16,7 @@ def preprocess():
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, help='词表路径')
     parser.add_argument('--log_path', default='data/preprocess.log', type=str, help='预处理日志存放位置')
     parser.add_argument('--train_path', default='data/train.txt', type=str, help='训练数据存放位置')
+    parser.add_argument('--is_cl_dataset', default=False, type=bool, help='是否预处理持续学习数据集')
     parser.add_argument('--save_path', default='data/my_train.pkl', type=str, help='训练数据tokenized后的存放位置')
     args = parser.parse_args()
 
@@ -24,31 +25,12 @@ def preprocess():
 
     # 初始化tokenizer
     tokenizer = BertTokenizerFast(vocab_file=args.vocab_path)
-    sep_id = tokenizer.sep_token_id
-    cls_id = tokenizer.cls_token_id
     logger.info("preprocessing data, data path:{}, save path:{}".format(args.train_path, args.save_path))
-
     # 读取训练数据集
-    with open('data/train.txt', 'r', encoding='utf-8') as f:
-        data = f.read()
-    train_data = data.split("\n\n")
-    logger.info("there are {} dialogue in dataset".format(len(train_data)))
-
-    # 开始进行tokenize
-    # 保存所有的对话数据,每条数据的格式为："[CLS]utterance1[SEP]utterance2[SEP]utterance3[SEP]..."
-    dialogue_len = []  # 记录所有对话tokenize之后的长度，用于统计中位数与均值
-    dialogue_list = []
-    with open(args.save_path, "w", encoding="utf-8") as f:
-        for dialogue in tqdm(train_data):
-            utterances = dialogue.split("\n")
-
-            input_ids = [cls_id]  # 每个dialogue以[CLS]开头
-            for utterance in utterances:
-                input_ids.extend(tokenizer.encode(utterance, add_special_tokens=False))  # tokenizer不自动添加[CLS], [SEP]等special token
-                input_ids.append(sep_id)  # 每个utterance之后添加[SEP]，表示utterance结束
-
-            dialogue_len.append(len(input_ids))
-            dialogue_list.append(input_ids)
+    if args.is_cl_dataset:
+        dialogue_list, dialogue_len = process_cl_dataset(args, tokenizer, logger)
+    else:
+        dialogue_list, dialogue_len = process_general_dataset(args, tokenizer, logger)
 
     len_mean = np.mean(dialogue_len)
     len_median = np.median(dialogue_len)
@@ -58,6 +40,50 @@ def preprocess():
 
     logger.info("finish preprocessing data,the result is stored in {}".format(args.save_path))
     logger.info("mean of dialogue len:{},median of dialogue len:{},max len:{}".format(len_mean, len_median, len_max))
+
+
+def process_general_dataset(args, tokenizer, logger):
+    with open(args.train_path, 'r', encoding='utf-8') as f:
+        data = f.read()
+    train_data = data.split("\n\n")
+    logger.info("there are {} dialogs in general dataset".format(len(train_data)))
+
+    # 开始进行tokenize
+    # 保存所有的对话数据,每条数据的格式为："[CLS]utterance1[SEP]utterance2[SEP]utterance3[SEP]..."
+    dialogue_len = []  # 记录所有对话tokenize之后的长度，用于统计中位数与均值
+    dialogue_list = []
+    with open(args.save_path, "w", encoding="utf-8") as f:
+        for dialogue in tqdm(train_data):
+            utterances = dialogue.split("\n")
+
+            input_ids = [tokenizer.cls_token_id]  # 每个dialogue以[CLS]开头
+            for utterance in utterances:
+                input_ids.extend(
+                    tokenizer.encode(utterance, add_special_tokens=False))  # tokenizer不自动添加[CLS], [SEP]等special token
+                input_ids.append(tokenizer.sep_token_id)  # 每个utterance之后添加[SEP]，表示utterance结束
+
+            dialogue_len.append(len(input_ids))
+            dialogue_list.append(input_ids)
+    return dialogue_list, dialogue_len
+
+
+def process_cl_dataset(args, tokenizer, logger):
+    dialogue_len = []
+    dialogue_list = []
+    with open(args.train_path, 'r', encoding='utf-8') as f:
+        dialogs = json.load(f)
+        logger.info("there are {} dialogs in Continual Learning dataset".format(len(dialogs)))
+        for dialog in tqdm(dialogs):
+            input_ids = [tokenizer.cls_token_id]  # 每个dialogue以[CLS]开头
+            for utterance in dialog['text']:
+                input_ids.extend(
+                    tokenizer.encode(utterance, add_special_tokens=False))  # 不自动添加[CLS], [SEP]等special token
+                input_ids.append(tokenizer.sep_token_id)  # 每个utterance之后添加[SEP]，表示utterance结束
+
+            dialogue_len.append(len(input_ids))
+            dialogue_list.append(input_ids)
+
+    return dialogue_list, dialogue_len
 
 
 if __name__ == '__main__':

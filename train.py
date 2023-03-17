@@ -15,7 +15,7 @@ from data_loader import get_dataloader
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device_ids', default='2,3', type=str, required=False, help='设置使用哪些显卡')
+    parser.add_argument('--device_ids', default='6,7', type=str, required=False, help='设置使用哪些显卡')
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False, help='词表路径')
     parser.add_argument('--model_config', default='config/config.json', type=str, required=False, help='设置模型参数')
     parser.add_argument('--train_path', default='data/my_train.pkl', type=str, required=False, help='训练集路径')
@@ -23,7 +23,7 @@ def set_args():
     parser.add_argument('--log_path', default='data/train.log', type=str, required=False, help='训练日志存放位置')
     parser.add_argument('--ignore_index', default=-100, type=int, required=False, help='对于ignore_index的label token不计算梯度')
     # parser.add_argument('--input_len', default=200, type=int, required=False, help='输入的长度')
-    parser.add_argument('--epochs', default=100, type=int, required=False, help='训练的最大轮次')
+    parser.add_argument('--epochs', default=50, type=int, required=False, help='训练的最大轮次')
     parser.add_argument('--batch_size', default=4, type=int, required=False, help='训练的batch size')
     parser.add_argument('--lr', default=2.6e-5, type=float, required=False, help='学习率')
     parser.add_argument('--eps', default=1.0e-09, type=float, required=False, help='衰减率')
@@ -198,9 +198,10 @@ def train(model, logger, train_dataloader, validate_dataloader, args):
 
 
 def main():
-    fix_seed(42)
     args = set_args()
     logger = create_logger(args.log_path)
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device_ids  # 设置可见GPU
+    fix_seed(42)
 
     # 创建模型的输出目录
     if not os.path.exists(args.save_model_path):
@@ -213,7 +214,6 @@ def main():
     args.cls_id = tokenizer.cls_token_id
 
     # 设置使用哪些显卡进行训练
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.device_ids  # 设置可见GPU
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'  # 设置训练主设备
     logger.info('using device: {}'.format(args.device))
 
