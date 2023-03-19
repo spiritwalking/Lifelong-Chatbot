@@ -1,8 +1,11 @@
 vocab
 sample
-model
-figure
-data
+from_scratch/model
+from_scratch/data
+from_scratch/logs
+finetune/model
+finetune/data
+finetune/logs
 .DS_Store
 .idea
 __pycache__

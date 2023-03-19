@@ -3,7 +3,7 @@ import torch
 import pickle
 
 
-class MyDataset(Dataset):
+class ChatDataset(Dataset):
     def __init__(self, input_list, max_len):
         self.input_list = input_list
         self.max_len = max_len
@@ -28,7 +28,7 @@ def get_dataset(args):
 
     # 划分训练集与验证集
     val_num = args.val_num
-    all_dataset = MyDataset(input_list, args.max_len)
+    all_dataset = ChatDataset(input_list, args.max_len)
 
     # debug with small dataset
     # lengths = [1000, 100, len(all_dataset)-1100]

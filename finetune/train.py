@@ -1,30 +1,32 @@
 import argparse
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 from datetime import datetime
 import os
 from os.path import join, exists
 import torch.nn as nn
 import transformers
-from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed, calculate_acc
-from transformers import GPT2TokenizerFast, GPT2LMHeadModel, GPT2Config
+import sys
+from transformers import GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
 from data_loader import get_dataloader
+
+sys.path.append("..")
+from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed, calculate_acc
 
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device_ids', default='6,7', type=str, required=False, help='设置使用哪些显卡')
-    parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False, help='词表路径')
+    parser.add_argument('--device_ids', default='0,1,2,3', type=str, required=False, help='设置使用哪些显卡')
+    parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, required=False, help='词表路径')
     parser.add_argument('--model_config', default='config/config.json', type=str, required=False, help='设置模型参数')
-    parser.add_argument('--train_path', default='data/my_train.pkl', type=str, required=False, help='训练集路径')
+    parser.add_argument('--train_path', default='data/train.pkl', type=str, required=False, help='训练集路径')
     parser.add_argument('--max_len', default=150, type=int, required=False, help='训练时，输入数据的最大长度')
-    parser.add_argument('--log_path', default='data/train.log', type=str, required=False, help='训练日志存放位置')
+    parser.add_argument('--log_path', default='logs/train.log', type=str, required=False, help='训练日志存放位置')
     parser.add_argument('--ignore_index', default=-100, type=int, required=False, help='对于ignore_index的label token不计算梯度')
     # parser.add_argument('--input_len', default=200, type=int, required=False, help='输入的长度')
     parser.add_argument('--epochs', default=50, type=int, required=False, help='训练的最大轮次')
-    parser.add_argument('--batch_size', default=4, type=int, required=False, help='训练的batch size')
+    parser.add_argument('--batch_size', default=8, type=int, required=False, help='训练的batch size')
     parser.add_argument('--lr', default=2.6e-5, type=float, required=False, help='学习率')
     parser.add_argument('--eps', default=1.0e-09, type=float, required=False, help='衰减率')
     parser.add_argument('--log_step', default=100, type=int, required=False, help='多少步汇报一次loss')
@@ -32,7 +34,7 @@ def set_args():
     parser.add_argument('--max_grad_norm', default=2.0, type=float, required=False, help='设置最大梯度范数')
     parser.add_argument('--save_model_path', default='model', type=str, required=False, help='模型输出路径')
     parser.add_argument('--pretrained_model', default='', type=str, required=False, help='预训练的模型的路径')
-    parser.add_argument('--num_workers', type=int, default=0, help="dataloader加载数据时使用的线程数量")
+    parser.add_argument('--num_workers', type=int, default=2, help="dataloader加载数据时使用的线程数量")
     parser.add_argument('--patience', type=int, default=0, help="用于early stopping,设为0时,不进行early stopping")
     parser.add_argument('--warmup_steps', type=int, default=4000, help='warm up步数')
     parser.add_argument('--val_num', type=int, default=8000, help='验证集大小')
@@ -99,8 +101,7 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
     # 记录当前epoch的平均loss与accuracy
     epoch_mean_loss = total_loss / len(train_dataloader)
     epoch_mean_acc = epoch_correct_num / epoch_total_num
-    logger.info(
-        "epoch {}: loss {:.6}, predict_acc {:.6}".format(epoch + 1, epoch_mean_loss, epoch_mean_acc))
+    logger.info("epoch {}: loss {:.6}, predict_acc {:.6}".format(epoch + 1, epoch_mean_loss, epoch_mean_acc))
 
     # save model
     logger.info('saving model for epoch {}'.format(epoch + 1))
@@ -204,7 +205,7 @@ def main():
     fix_seed(42)
 
     # 创建模型的输出目录
-    if not os.path.exists(args.save_model_path):
+    if not exists(args.save_model_path):
         os.mkdir(args.save_model_path)
 
     # 初始化tokenizer

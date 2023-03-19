@@ -3,8 +3,10 @@ import argparse
 import pickle
 from tqdm import tqdm
 import numpy as np
+import sys
+
+sys.path.append("..")
 from utils import create_logger
-import json
 
 
 def preprocess():
@@ -13,11 +15,10 @@ def preprocess():
     """
     # 设置参数
     parser = argparse.ArgumentParser()
-    parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, help='词表路径')
-    parser.add_argument('--log_path', default='data/preprocess.log', type=str, help='预处理日志存放位置')
+    parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, help='词表路径')
+    parser.add_argument('--log_path', default='logs/preprocess.log', type=str, help='预处理日志存放位置')
     parser.add_argument('--train_path', default='data/train.txt', type=str, help='训练数据存放位置')
-    parser.add_argument('--is_cl_dataset', default=False, type=bool, help='是否预处理持续学习数据集')
-    parser.add_argument('--save_path', default='data/my_train.pkl', type=str, help='训练数据tokenized后的存放位置')
+    parser.add_argument('--save_path', default='data/a_train.pkl', type=str, help='训练数据tokenized后的存放位置')
     args = parser.parse_args()
 
     # 初始化日志对象
@@ -26,11 +27,8 @@ def preprocess():
     # 初始化tokenizer
     tokenizer = BertTokenizerFast(vocab_file=args.vocab_path)
     logger.info("preprocessing data, data path:{}, save path:{}".format(args.train_path, args.save_path))
-    # 读取训练数据集
-    if args.is_cl_dataset:
-        dialogue_list, dialogue_len = process_cl_dataset(args, tokenizer, logger)
-    else:
-        dialogue_list, dialogue_len = process_general_dataset(args, tokenizer, logger)
+    # tokenize数据集
+    dialogue_list, dialogue_len = process_general_dataset(args, tokenizer, logger)
 
     len_mean = np.mean(dialogue_len)
     len_median = np.median(dialogue_len)
@@ -64,25 +62,6 @@ def process_general_dataset(args, tokenizer, logger):
 
             dialogue_len.append(len(input_ids))
             dialogue_list.append(input_ids)
-    return dialogue_list, dialogue_len
-
-
-def process_cl_dataset(args, tokenizer, logger):
-    dialogue_len = []
-    dialogue_list = []
-    with open(args.train_path, 'r', encoding='utf-8') as f:
-        dialogs = json.load(f)
-        logger.info("there are {} dialogs in Continual Learning dataset".format(len(dialogs)))
-        for dialog in tqdm(dialogs):
-            input_ids = [tokenizer.cls_token_id]  # 每个dialogue以[CLS]开头
-            for utterance in dialog['text']:
-                input_ids.extend(
-                    tokenizer.encode(utterance, add_special_tokens=False))  # 不自动添加[CLS], [SEP]等special token
-                input_ids.append(tokenizer.sep_token_id)  # 每个utterance之后添加[SEP]，表示utterance结束
-
-            dialogue_len.append(len(input_ids))
-            dialogue_list.append(input_ids)
-
     return dialogue_list, dialogue_len
 
 

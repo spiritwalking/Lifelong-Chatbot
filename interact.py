@@ -1,30 +1,11 @@
-import transformers
 import torch
 import os
-import json
-import random
-import numpy as np
 import argparse
-from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-from tqdm import tqdm
-from torch.nn import DataParallel
-import logging
-from transformers import GPT2TokenizerFast, GPT2LMHeadModel, GPT2Config
+from transformers import GPT2LMHeadModel
 from transformers import BertTokenizerFast
-# from transformers import BertTokenizer
-from os.path import join, exists
-from itertools import zip_longest, chain
 # from chatbot.model import DialogueGPT2Model
-from data_loader import MyDataset
-from torch.utils.data import Dataset, DataLoader
-from torch.nn import CrossEntropyLoss
-from sklearn.model_selection import train_test_split
 import torch.nn.functional as F
-import gradio as gr
-
-PAD = '[PAD]'
-pad_id = 0
 
 
 def set_args():
@@ -36,9 +17,6 @@ def set_args():
     parser.add_argument('--temperature', default=1, type=float, required=False, help='生成的temperature')
     parser.add_argument('--topk', default=8, type=int, required=False, help='最高k选1')
     parser.add_argument('--topp', default=0, type=float, required=False, help='最高积累概率')
-    # parser.add_argument('--model_config', default='config/model_config_dialogue_small.json', type=str, required=False,
-    #                     help='模型参数')
-    parser.add_argument('--log_path', default='data/interact.log', type=str, required=False, help='interact日志存放位置')
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, required=False, help='选择词库')
     parser.add_argument('--model_path', default='model/epoch40', type=str, required=False, help='对话模型路径')
     parser.add_argument('--save_samples_path', default="sample/", type=str, required=False, help="保存聊天记录的文件路径")
@@ -49,32 +27,6 @@ def set_args():
     parser.add_argument('--max_history_len', type=int, default=3, help="dialogue history的最大长度")
     parser.add_argument('--no_cuda', action='store_true', help='不使用GPU进行预测')
     return parser.parse_args()
-
-
-def create_logger(args):
-    """
-    将日志输出到日志文件和控制台
-    """
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s')
-
-    # 创建一个handler，用于写入日志文件
-    file_handler = logging.FileHandler(
-        filename=args.log_path)
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-
-    # 创建一个handler，用于将日志输出到控制台
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-
-    return logger
 
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
@@ -112,11 +64,9 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 def main():
     args = set_args()
-    logger = create_logger(args)
     # 当用户使用GPU,并且GPU可用时
     args.cuda = torch.cuda.is_available() and not args.no_cuda
     device = 'cuda' if args.cuda else 'cpu'
-    logger.info('using device:{}'.format(device))
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     tokenizer = BertTokenizerFast(vocab_file=args.vocab_path, sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]")
     # tokenizer = BertTokenizer(vocab_file=args.voca_path)
@@ -178,42 +128,43 @@ def main():
                 samples_file.close()
             break
 
-def see():
-    tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
-    model = AutoModel.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True).half().cuda()
-    model = model.eval()
 
-    MAX_TURNS = 20
-    MAX_BOXES = MAX_TURNS * 2
-
-    def predict(input, history=None):
-        if history is None:
-            history = []
-        response, history = model.chat(tokenizer, input, history)
-        updates = []
-        for query, response in history:
-            updates.append(gr.update(visible=True, value="用户：" + query))
-            updates.append(gr.update(visible=True, value="ChatGLM-6B：" + response))
-        if len(updates) < MAX_BOXES:
-            updates = updates + [gr.Textbox.update(visible=False)] * (MAX_BOXES - len(updates))
-        return [history] + updates
-
-    with gr.Blocks() as demo:
-        state = gr.State([])
-        text_boxes = []
-        for i in range(MAX_BOXES):
-            if i % 2 == 0:
-                text_boxes.append(gr.Markdown(visible=False, label="提问："))
-            else:
-                text_boxes.append(gr.Markdown(visible=False, label="回复："))
-
-        with gr.Row():
-            with gr.Column(scale=4):
-                txt = gr.Textbox(show_label=False, placeholder="Enter text and press enter").style(container=False)
-            with gr.Column(scale=1):
-                button = gr.Button("Generate")
-        button.click(predict, [txt, state], [state] + text_boxes)
-    demo.queue().launch(share=True, inbrowser=True)
+# def see():
+#     tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
+#     model = AutoModel.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True).half().cuda()
+#     model = model.eval()
+#
+#     MAX_TURNS = 20
+#     MAX_BOXES = MAX_TURNS * 2
+#
+#     def predict(input, history=None):
+#         if history is None:
+#             history = []
+#         response, history = model.chat(tokenizer, input, history)
+#         updates = []
+#         for query, response in history:
+#             updates.append(gr.update(visible=True, value="用户：" + query))
+#             updates.append(gr.update(visible=True, value="ChatGLM-6B：" + response))
+#         if len(updates) < MAX_BOXES:
+#             updates = updates + [gr.Textbox.update(visible=False)] * (MAX_BOXES - len(updates))
+#         return [history] + updates
+#
+#     with gr.Blocks() as demo:
+#         state = gr.State([])
+#         text_boxes = []
+#         for i in range(MAX_BOXES):
+#             if i % 2 == 0:
+#                 text_boxes.append(gr.Markdown(visible=False, label="提问："))
+#             else:
+#                 text_boxes.append(gr.Markdown(visible=False, label="回复："))
+#
+#         with gr.Row():
+#             with gr.Column(scale=4):
+#                 txt = gr.Textbox(show_label=False, placeholder="Enter text and press enter").style(container=False)
+#             with gr.Column(scale=1):
+#                 button = gr.Button("Generate")
+#         button.click(predict, [txt, state], [state] + text_boxes)
+#     demo.queue().launch(share=True, inbrowser=True)
 
 
 if __name__ == '__main__':
