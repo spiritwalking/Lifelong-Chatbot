@@ -17,27 +17,24 @@ from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device_ids', default='0,1,2,3', type=str, required=False, help='设置使用哪些显卡')
-    parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, required=False, help='词表路径')
-    parser.add_argument('--model_config', default='config/config.json', type=str, required=False, help='设置模型参数')
-    parser.add_argument('--train_path', default='data/train.pkl', type=str, required=False, help='训练集路径')
-    parser.add_argument('--max_len', default=150, type=int, required=False, help='训练时，输入数据的最大长度')
-    parser.add_argument('--log_path', default='logs/train.log', type=str, required=False, help='训练日志存放位置')
-    parser.add_argument('--ignore_index', default=-100, type=int, required=False, help='对于ignore_index的label token不计算梯度')
-    # parser.add_argument('--input_len', default=200, type=int, required=False, help='输入的长度')
-    parser.add_argument('--epochs', default=50, type=int, required=False, help='训练的最大轮次')
-    parser.add_argument('--batch_size', default=8, type=int, required=False, help='训练的batch size')
-    parser.add_argument('--lr', default=2.6e-5, type=float, required=False, help='学习率')
-    parser.add_argument('--eps', default=1.0e-09, type=float, required=False, help='衰减率')
-    parser.add_argument('--log_step', default=100, type=int, required=False, help='多少步汇报一次loss')
-    parser.add_argument('--gradient_accumulation_steps', default=4, type=int, required=False, help='梯度积累')
-    parser.add_argument('--max_grad_norm', default=2.0, type=float, required=False, help='设置最大梯度范数')
-    parser.add_argument('--save_model_path', default='model', type=str, required=False, help='模型输出路径')
-    parser.add_argument('--pretrained_model', default='', type=str, required=False, help='预训练的模型的路径')
+    parser.add_argument('--device_ids', default='0,1', type=str, help='设置使用哪些显卡')
+    parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, help='词表路径')
+    parser.add_argument('--train_folder', default='data', type=str, help='训练集路径')
+    parser.add_argument('--max_len', default=300, type=int, help='训练时，输入数据的最大长度')
+    parser.add_argument('--log_path', default='logs/train.log', type=str, help='训练日志存放位置')
+    parser.add_argument('--ignore_index', default=-100, type=int, help='对于ignore_index的label token不计算梯度')
+    # parser.add_argument('--input_len', default=200, type=int, help='输入的长度')
+    parser.add_argument('--epochs', default=30, type=int, help='训练的最大轮次')
+    parser.add_argument('--batch_size', default=8, type=int, help='训练的batch size')
+    parser.add_argument('--lr', default=2.6e-5, type=float, help='学习率')
+    parser.add_argument('--eps', default=1.0e-09, type=float, help='衰减率')
+    parser.add_argument('--log_step', default=100, type=int, help='多少步汇报一次loss')
+    parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help='梯度积累')
+    parser.add_argument('--max_grad_norm', default=2.0, type=float, help='设置最大梯度范数')
+    parser.add_argument('--save_model_path', default='model', type=str, help='模型输出路径')
+    parser.add_argument('--pretrained_model', default='model/model_epoch40_50w', type=str, help='预训练的模型的路径')
     parser.add_argument('--num_workers', type=int, default=2, help="dataloader加载数据时使用的线程数量")
     parser.add_argument('--patience', type=int, default=0, help="用于early stopping,设为0时,不进行early stopping")
-    parser.add_argument('--warmup_steps', type=int, default=4000, help='warm up步数')
-    parser.add_argument('--val_num', type=int, default=8000, help='验证集大小')
     args = parser.parse_args()
     return args
 
@@ -156,9 +153,9 @@ def train(model, logger, train_dataloader, validate_dataloader, args):
     total_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
     optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
     scheduler = transformers.get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps
+        optimizer, num_warmup_steps=int(total_steps*0.1), num_training_steps=total_steps
     )
-
+    logger.info(f'using linear scheduler with num_warmup_steps: {int(total_steps*0.1)}')
     logger.info('starting training')
 
     # 用于记录每个epoch训练和验证的loss
@@ -218,14 +215,9 @@ def main():
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'  # 设置训练主设备
     logger.info('using device: {}'.format(args.device))
 
-    # 创建模型
-    if args.pretrained_model:  # 加载预训练模型
-        model = GPT2LMHeadModel.from_pretrained(args.pretrained_model)
-        logger.info('fine-tune pretrained model')
-    else:  # 初始化模型
-        model_config = GPT2Config.from_json_file(args.model_config)
-        model = GPT2LMHeadModel(config=model_config)
-        logger.info('train a model from scratch')
+    # 加载预训练模型
+    logger.info('fine-tune pretrained model')
+    model = GPT2LMHeadModel.from_pretrained(args.pretrained_model)
     logger.info('model config:\n{}'.format(model.config.to_json_string()))
     assert model.config.vocab_size == tokenizer.vocab_size
 

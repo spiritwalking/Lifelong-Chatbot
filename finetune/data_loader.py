@@ -18,31 +18,31 @@ class ChatDataset(Dataset):
         return len(self.input_list)
 
 
-def get_dataset(args):
+def get_dataset(args, logger):
     """
     加载训练集和验证集
     """
-    train_path = args.train_path
-    with open(train_path, "rb") as f:
-        input_list = pickle.load(f)
+    train_files = [args.train_folder+'/task'+str(i)+'_train.pkl' for i in range(6)]
+    test_files = [args.train_folder + '/task' + str(i) + '_test.pkl' for i in range(6)]
+
+    train_list = []
+    test_list = []
+    for train_file, test_file in zip(train_files, test_files):
+        with open(train_file, "rb") as f1, open(test_file, "rb") as f2:
+            train_list.extend(pickle.load(f1))
+            test_list.extend(pickle.load(f2))
 
     # 划分训练集与验证集
-    val_num = args.val_num
-    all_dataset = ChatDataset(input_list, args.max_len)
-
-    # debug with small dataset
-    # lengths = [1000, 100, len(all_dataset)-1100]
-    # train_dataset, val_dataset, _ = random_split(all_dataset, lengths)
-
-    lengths = [len(all_dataset) - val_num, val_num]
-    train_dataset, val_dataset = random_split(all_dataset, lengths)
+    train_dataset = ChatDataset(train_list, args.max_len)
+    val_dataset = ChatDataset(test_list, args.max_len)
+    logger.info(f"train set length: {len(train_dataset)}, val set length: {len(val_dataset)}")
 
     return train_dataset, val_dataset
 
 
 def get_dataloader(args, collate_fn, logger):
     logger.info("loading training dataset and validating dataset")
-    train_dataset, validate_dataset = get_dataset(args)
+    train_dataset, validate_dataset = get_dataset(args, logger)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,

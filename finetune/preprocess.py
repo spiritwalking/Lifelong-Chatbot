@@ -42,6 +42,7 @@ def preprocess():
         test_file = '/task' + str(topic2id[topic]) + "_test.pkl"
         with open(folder + train_file, 'wb') as f_train, open(folder + test_file, 'wb') as f_test:
             train_len = int(0.8 * len(dialogue_list[topic]))
+            logger.info(f"task {topic} with train len:{train_len} and val len:{len(dialogue_list[topic]) - train_len}")
             pickle.dump(dialogue_list[topic][:train_len], f_train)
             pickle.dump(dialogue_list[topic][train_len:], f_test)
 
@@ -57,16 +58,21 @@ def process_cl_dataset(args, tokenizer, logger):
         dialogs = json.load(f)
         logger.info("there are {} dialogs in Continual Learning dataset".format(len(dialogs)))
         for dialog in tqdm(dialogs):
-            input_ids = [tokenizer.cls_token_id]  # 每个dialogue以[CLS]开头
-            for utterance in dialog['text']:
-                input_ids.extend(
-                    tokenizer.encode(utterance, add_special_tokens=False))  # 不自动添加[CLS], [SEP]等special token
-                input_ids.append(tokenizer.sep_token_id)  # 每个utterance之后添加[SEP]，表示utterance结束
+            input_ids1 = get_input_ids(dialog['text'][:10], tokenizer)
+            input_ids2 = get_input_ids(dialog['text'][10:], tokenizer)
 
-            dialogue_len.append(len(input_ids))
-            dialogue_list[dialog['topic']].append(input_ids)
+            dialogue_len.extend([len(input_ids1), len(input_ids2)])
+            dialogue_list[dialog['topic']].extend([input_ids1, input_ids2])
 
     return dialogue_list, dialogue_len
+
+
+def get_input_ids(dialog, tokenizer):
+    input_ids = [tokenizer.cls_token_id]  # 每个dialogue以[CLS]开头
+    for utterance in dialog:
+        input_ids.extend(tokenizer.encode(utterance, add_special_tokens=False))  # 不自动添加[CLS], [SEP]等special token
+        input_ids.append(tokenizer.sep_token_id)  # 每个utterance之后添加[SEP]，表示utterance结束
+    return input_ids
 
 
 if __name__ == '__main__':
