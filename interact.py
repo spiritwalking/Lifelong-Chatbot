@@ -14,7 +14,7 @@ def set_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', default='cpu', type=str, help='生成设备')
-    parser.add_argument('--temperature', default=1, type=float, help='生成的temperature')
+    parser.add_argument('--temperature', default=1.0, type=float, help='生成的temperature')
     parser.add_argument('--topk', default=8, type=int, help='保留前topk个token')
     parser.add_argument('--topp', default=0.0, type=float, help='最高积累概率')
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, help='选择词库')
@@ -27,19 +27,22 @@ def set_args():
     return parser.parse_args()
 
 
-def chat(model, tokenizer, history, max_history_len, repetition_penalty, temperature, device, max_len, topk, topp):
-    # 组装输入语句
-    input_ids = [tokenizer.cls_token_id]  # 每个input以[CLS]为开头
-    for prev_query, prev_response in history[-max_history_len:]:
-        prev_query = tokenizer.encode(prev_query, add_special_tokens=False)
-        input_ids.extend(prev_query)
-        input_ids.append(tokenizer.sep_token_id)
-        if prev_response is not None:
-            prev_response = tokenizer.encode(prev_response, add_special_tokens=False)
-            input_ids.extend(prev_response)
+def chat(model, tokenizer, history, max_history_len=3, repetition_penalty=1.0, temperature=1.0, device='cpu',
+         max_len=50, topk=8, topp=0.0, is_tokenized=False):
+    if is_tokenized:
+        input_ids = history.to(device)
+    else:  # 组装输入语句
+        input_ids = [tokenizer.cls_token_id]  # 每个input以[CLS]为开头
+        for prev_query, prev_response in history[-max_history_len:]:
+            prev_query = tokenizer.encode(prev_query, add_special_tokens=False)
+            input_ids.extend(prev_query)
             input_ids.append(tokenizer.sep_token_id)
-    input_ids = torch.tensor(input_ids, dtype=torch.long).to(device)
-    input_ids = input_ids.unsqueeze(0)  # [[CLS, id0, id1... SEP]]
+            if prev_response is not None:
+                prev_response = tokenizer.encode(prev_response, add_special_tokens=False)
+                input_ids.extend(prev_response)
+                input_ids.append(tokenizer.sep_token_id)
+        input_ids = torch.tensor(input_ids, dtype=torch.long).to(device)
+        input_ids = input_ids.unsqueeze(0)  # [[CLS, id0, id1... SEP]]
 
     response = []
     # 逐个生成tokens
@@ -48,8 +51,8 @@ def chat(model, tokenizer, history, max_history_len, repetition_penalty, tempera
         logits = outputs.logits
         next_token_logits = logits[0, -1, :]
 
-        for id in set(response):  # 对于已生成的结果中的每个token添加一个重复惩罚项，降低其生成概率
-            next_token_logits[id] /= repetition_penalty
+        for token in set(response):  # 对于已生成的结果中的每个token添加一个重复惩罚项，降低其生成概率
+            next_token_logits[token] /= repetition_penalty
         next_token_logits = next_token_logits / temperature  # temperature越高，生成的文本的多样性和创造性越高
         next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')  # 将[UNK]的概率设为无穷小
 
@@ -66,8 +69,9 @@ def chat(model, tokenizer, history, max_history_len, repetition_penalty, tempera
 
     response_tokens = tokenizer.convert_ids_to_tokens(response)
     response_text = "".join(response_tokens)
-    history[-1][1] = response_text
-    return history
+    if not is_tokenized:
+        history[-1][1] = response_text
+    return response_text, history
 
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
@@ -120,9 +124,9 @@ def cli_demo():
         try:
             input_text = input("user:")
             history.append([input_text, None])
-            history = chat(model, tokenizer, history, **kwargs)
+            response, history = chat(model, tokenizer, history, **kwargs)
 
-            print("chatbot:" + history[-1][1])
+            print("chatbot:" + response)
             samples_file.write("user:{}\nchatbot:{}\n".format(history[-1][0], history[-1][1]))
 
         except KeyboardInterrupt:

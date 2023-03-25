@@ -9,7 +9,7 @@ import transformers
 import sys
 from transformers import GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
-from data_loader import get_dataloader
+from data_loader import get_training_loader
 
 sys.path.append("..")
 from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed, calculate_acc
@@ -111,7 +111,7 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
     return epoch_mean_loss
 
 
-def validate_epoch(model, validate_dataloader, logger, epoch, args):
+def validate_epoch(model, validation_dataloader, logger, epoch, args):
     logger.info("start validating")
     model.eval()
     device = args.device
@@ -120,7 +120,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
     # 捕获cuda out of memory exception
     try:
         with torch.no_grad():
-            for batch_idx, (input_ids, labels) in enumerate(validate_dataloader):
+            for batch_idx, (input_ids, labels) in enumerate(validation_dataloader):
                 input_ids = input_ids.to(device)
                 labels = labels.to(device)
                 outputs = model(input_ids, labels=labels)
@@ -132,7 +132,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
                 del input_ids, outputs
 
             # 记录当前epoch的平均loss
-            epoch_mean_loss = total_loss / len(validate_dataloader)
+            epoch_mean_loss = total_loss / len(validation_dataloader)
             logger.info("validate epoch {}: loss {}".format(epoch + 1, epoch_mean_loss))
             epoch_finish_time = datetime.now()
             logger.info('time for validating one epoch: {}'.format(epoch_finish_time - epoch_start_time))
@@ -148,7 +148,7 @@ def validate_epoch(model, validate_dataloader, logger, epoch, args):
             raise exception
 
 
-def train(model, logger, train_dataloader, validate_dataloader, args):
+def train_model(model, logger, train_dataloader, validation_dataloader, args):
     early_stopping = EarlyStopping(args.patience, save_path=args.save_model_path)
     total_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
     optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
@@ -171,9 +171,8 @@ def train(model, logger, train_dataloader, validate_dataloader, args):
         train_losses.append(train_loss)
 
         # ========== validate ========== #
-        validate_loss = validate_epoch(
-            model=model, validate_dataloader=validate_dataloader,
-            logger=logger, epoch=epoch, args=args)
+        validate_loss = validate_epoch(model=model, validation_dataloader=validation_dataloader, logger=logger,
+                                       epoch=epoch, args=args)
         validate_losses.append(validate_loss)
 
         # 保存当前困惑度最低的模型，困惑度低，模型的生成效果不一定会越好
@@ -235,9 +234,9 @@ def main():
     logger.info("args:{}".format(args))
 
     # 加载训练集和验证集
-    train_dataloader, validate_dataloader = get_dataloader(args, collate_fn, logger)
+    train_dataloader, validate_dataloader = get_training_loader(args, collate_fn, logger)
 
-    train(model, logger, train_dataloader, validate_dataloader, args)
+    train_model(model, logger, train_dataloader, validate_dataloader, args)
 
 
 if __name__ == '__main__':

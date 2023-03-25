@@ -17,7 +17,7 @@ def user(user_message, history):
 
 
 def bot(history, max_history_len, repetition_penalty, temperature):
-    history = chat(model, tokenizer, history, max_history_len, repetition_penalty, temperature, **kwargs)
+    _, history = chat(model, tokenizer, history, max_history_len, repetition_penalty, temperature, **kwargs)
     return history
 
 
