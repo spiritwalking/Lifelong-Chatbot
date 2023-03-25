@@ -18,11 +18,27 @@ class ChatDataset(Dataset):
         return len(self.input_list)
 
 
+def get_task_dataset(task_id, args, logger):
+    train_file = args.train_folder + '/task' + str(task_id) + '_train.pkl'
+    test_file = args.train_folder + '/task' + str(task_id) + '_test.pkl'
+    train_list = []
+    test_list = []
+    with open(train_file, "rb") as f1, open(test_file, "rb") as f2:
+        train_list.extend(pickle.load(f1))
+        test_list.extend(pickle.load(f2))
+
+    train_dataset = ChatDataset(train_list, args.max_len)
+    val_dataset = ChatDataset(test_list, args.max_len)
+    logger.info(f"Task{task_id} train set length: {len(train_dataset)}, val set length: {len(val_dataset)}")
+
+    return train_dataset, val_dataset
+
+
 def get_dataset(args, logger):
     """
     加载训练集和验证集
     """
-    train_files = [args.train_folder+'/task'+str(i)+'_train.pkl' for i in range(6)]
+    train_files = [args.train_folder + '/task' + str(i) + '_train.pkl' for i in range(6)]
     test_files = [args.train_folder + '/task' + str(i) + '_test.pkl' for i in range(6)]
 
     train_list = []
@@ -40,9 +56,12 @@ def get_dataset(args, logger):
     return train_dataset, val_dataset
 
 
-def get_dataloader(args, collate_fn, logger):
+def get_dataloader(args, collate_fn, logger, task_id=None):
     logger.info("loading training dataset and validating dataset")
-    train_dataset, validate_dataset = get_dataset(args, logger)
+    if task_id:
+        train_dataset, validate_dataset = get_task_dataset(task_id, args, logger)
+    else:
+        train_dataset, validate_dataset = get_dataset(args, logger)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,

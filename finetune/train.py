@@ -53,7 +53,7 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
         try:
             input_ids = input_ids.to(device)
             labels = labels.to(device)
-            outputs = model(input_ids, labels=labels)
+            outputs = model(input_ids, labels=labels)  # TODO: 为什么input和label是这样的？？？
             logits = outputs.logits
             loss = outputs.loss.mean()
 
