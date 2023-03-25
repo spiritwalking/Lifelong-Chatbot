@@ -10,25 +10,6 @@ sys.path.append("..")
 from utils import fix_seed, create_logger
 from interact import chat
 
-dialog = [
-    "平克·弗洛伊德这个人你听说过吗？",
-    "听说过，很有名气的一位乐队的歌手。",
-    "他是法国人吗？",
-    "不是的，他是英国人。",
-    "他有外文名字吗？",
-    "他的外文名叫Pink Floyd，你知道他是哪年出道的吗？",
-    "他是1967年出道的。",
-    "你听过他哪个歌曲呢？",
-    "我听过他的歌The Wall，你听过吗？",
-    "没有，很好听吗？",
-    "是啊，很不错的一首歌。",
-    "他唱的歌销量怎么样？",
-    "销量很好，2个亿呢。",
-    "这个成绩真不错。他的音乐大都什么风格的呀？",
-    "他主打摇滚风。",
-    "哦，有时间我一定听听他的歌曲。"
-]
-
 
 def set_args():
     parser = argparse.ArgumentParser()
@@ -40,29 +21,6 @@ def set_args():
     parser.add_argument('--batch_size', default=1, type=int, help='训练的batch size')
     parser.add_argument('--num_workers', type=int, default=2, help="dataloader加载数据时使用的线程数量")
     return parser.parse_args()
-
-
-def validate_single_dialog(model, tokenizer, args, logger):
-    device = args.device
-    model.eval()
-
-    bleu = evaluate.load('sacrebleu')
-
-    with torch.no_grad():
-        global dialog
-        dialog = dialog[:len(dialog) // 2 * 2]  # 保留前偶数条对话
-        history = []
-        for i in range(0, len(dialog), 2):
-            history.append([dialog[i], None])
-            reference = dialog[i + 1]
-
-            responce, _ = chat(model, tokenizer, history, device=device)
-            history[-1][1] = reference
-
-            bleu.add_batch(predictions=[responce], references=[reference])
-
-        bleu_score = bleu.compute(tokenize='zh')
-        logger.info(bleu_score)
 
 
 def validate_model(model, tokenizer, validation_loader, args, logger):
