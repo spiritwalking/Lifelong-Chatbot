@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, Subset, random_split
 import torch
 import pickle
 import numpy as np
@@ -54,8 +54,12 @@ def get_task_dataset(task_id, args, logger):
 
     train_dataset = TrainingDataset(train_list, args.max_len)
     val_dataset = TrainingDataset(test_list, args.max_len)
-    logger.info(f"Task{task_id} train set length: {len(train_dataset)}, val set length: {len(val_dataset)}")
 
+    # TODO: delete this
+    # train_dataset = Subset(train_dataset, list(range(2000)))
+    # val_dataset = Subset(val_dataset, list(range(500)))
+
+    logger.info(f"Task{task_id} train set length: {len(train_dataset)}, val set length: {len(val_dataset)}")
     return train_dataset, val_dataset
 
 
@@ -83,7 +87,7 @@ def get_training_dataset(args, logger):
 
 def get_training_loader(args, collate_fn, logger, task_id=None):
     logger.info("loading training dataset and validation dataset")
-    if task_id:
+    if task_id is not None:
         train_dataset, validate_dataset = get_task_dataset(task_id, args, logger)
     else:
         train_dataset, validate_dataset = get_training_dataset(args, logger)

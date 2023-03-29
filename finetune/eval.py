@@ -13,10 +13,10 @@ from interact import chat
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='model/model_epoch40_50w', help='被测模型路径')
+    parser.add_argument('--model', type=str, default='model_without_ewc/task5', help='被测模型路径')
     parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, help='选择词库')
-    parser.add_argument('--log_path', default='logs/test.log', type=str, help='测试日志存放位置')
-    parser.add_argument('--device', type=str, default='cuda:1', help="设备")
+    parser.add_argument('--log_path', default='logs/test_without_ewc.log', type=str, help='测试日志存放位置')
+    parser.add_argument('--device', type=str, default='cuda:5', help="设备")
     parser.add_argument('--max_len', default=250, type=int, help='训练时，输入数据的最大长度')
     parser.add_argument('--batch_size', default=1, type=int, help='训练的batch size')
     parser.add_argument('--num_workers', type=int, default=2, help="dataloader加载数据时使用的线程数量")
@@ -54,6 +54,12 @@ def main():
         logger.info(f"testing data: {data_path}")
         test_loader = get_validation_loader(data_path, max_len=args.max_len, batch_size=1, logger=logger)
         validate_model(model, tokenizer, test_loader, args, logger)
+
+    # for i in [0,1,2,3,4,5]:
+    #     data_path = "data/task" + str(i) + "_test.pkl"
+    #     logger.info(f"testing data: {data_path}")
+    #     test_loader = get_validation_loader(data_path, max_len=args.max_len, batch_size=1, logger=logger)
+    #     validate_model(model, tokenizer, test_loader, args, logger)
 
 
 if __name__ == "__main__":

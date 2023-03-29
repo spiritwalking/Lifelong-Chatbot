@@ -18,7 +18,7 @@ def preprocess():
     parser.add_argument('--vocab_path', default='../vocab/vocab.txt', type=str, help='词表路径')
     parser.add_argument('--log_path', default='logs/preprocess.log', type=str, help='预处理日志存放位置')
     parser.add_argument('--train_path', default='data/train.txt', type=str, help='训练数据存放位置')
-    parser.add_argument('--save_path', default='data/a_train.pkl', type=str, help='训练数据tokenized后的存放位置')
+    parser.add_argument('--save_path', default='data/train.pkl', type=str, help='训练数据tokenized后的存放位置')
     args = parser.parse_args()
 
     # 初始化日志对象
