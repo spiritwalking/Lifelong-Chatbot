@@ -5,8 +5,8 @@ from transformers import BertTokenizerFast
 tokenizer = BertTokenizerFast.from_pretrained("../my_tokenizer")
 
 
-def gen_single():
-    with open('data/single.json', 'r', encoding='utf-8') as f:
+def gen_dialog():
+    with open('data/multi.json', 'r', encoding='utf-8') as f:
         dialogs = json.load(f)
         for dialog in dialogs:
             yield {"dialog": dialog}
@@ -33,15 +33,15 @@ def map_function(example):
 
 
 def get_dataset():
-    dataset = Dataset.from_generator(gen_single)
+    dataset = Dataset.from_generator(gen_dialog)
     # dataset = dataset.select(range(2000))
-    return dataset.train_test_split(test_size=0.005)
+    return dataset.train_test_split(test_size=0.01)
 
 
 def preprocess():
     uttr_dataset = get_dataset()
     tokenized_dataset = uttr_dataset.map(map_function, num_proc=8)
-    tokenized_dataset.save_to_disk("tokenized-single")
+    tokenized_dataset.save_to_disk("tokenized-multi")
 
 
 if __name__ == "__main__":
