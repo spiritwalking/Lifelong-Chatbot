@@ -18,7 +18,7 @@ def set_args():
     parser.add_argument('--topk', default=8, type=int, help='保留前topk个token')
     parser.add_argument('--topp', default=0.0, type=float, help='最高积累概率')
     parser.add_argument('--vocab_path', default='vocab/vocab.txt', type=str, help='选择词库')
-    parser.add_argument('--model_path', default='from_scratch/gpt-2/checkpoint-10000', type=str, help='对话模型路径')
+    parser.add_argument('--model_path', default='from_scratch/model/model_epoch40_50w', type=str, help='对话模型路径')
     parser.add_argument('--save_samples_path', default="sample/", type=str, help="保存聊天记录的文件路径")
     parser.add_argument('--repetition_penalty', default=1.0, type=float,
                         help="重复惩罚参数，值越大生成的回复的重复性越低")

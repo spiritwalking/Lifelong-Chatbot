@@ -1,29 +1,37 @@
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
-import torch
+from transformers import (BertTokenizerFast, GPT2LMHeadModel, GPT2Config, DataCollatorForLanguageModeling,
+                          Trainer, TrainingArguments, set_seed)
+from datasets import load_from_disk
+import numpy as np
+import os
+import warnings
 
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-model = GPT2LMHeadModel.from_pretrained("gpt2")
-model.eval()
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+set_seed(42)
+warnings.filterwarnings("ignore")
 
-def predict(input, history=None):
-    # tokenize the new input sentence
-    if history is None:
-        history = []
-    new_user_input_ids = tokenizer.encode(input + tokenizer.eos_token, return_tensors='pt')
+checkpoint = "from_scratch/gpt-2-multi2/checkpoint-300000"
+tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer")
+model = GPT2LMHeadModel.from_pretrained(checkpoint)
 
-    # append the new user input tokens to the chat history
-    bot_input_ids = torch.cat([torch.LongTensor(history), new_user_input_ids], dim=-1)
+def main():
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    uttr_dataset = load_from_disk("from_scratch/tokenized-single")
+    training_args = TrainingArguments(
+        output_dir='from_scratch/test-gpt2',
+        resume_from_checkpoint=checkpoint,
+        per_device_eval_batch_size=32
+    )
 
-    # generate a response
-    history = model.generate(bot_input_ids, max_length=400, pad_token_id=tokenizer.eos_token_id).tolist()
+    trainer = Trainer(
+        model,
+        args=training_args,
+        eval_dataset=uttr_dataset["test"],
+        data_collator=data_collator,
+        tokenizer=tokenizer
+    )
 
-    # convert the tokens to text, and then split the responses into lines
-    response = tokenizer.decode(history[0], skip_special_tokens=True).split("<|endoftext|>")
-    #print('decoded_response-->>'+str(response))
-    response = [(response[i], response[i+1]) for i in range(0, len(response)-1, 2)]  # convert to tuples of list
-    #print('response-->>'+str(response))
-    return response, history
+    results = trainer.evaluate()
+    print(results)
 
-a, b = predict("boy")
-print(a)
-print(b)
+
+main()

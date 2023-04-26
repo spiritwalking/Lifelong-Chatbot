@@ -6,7 +6,7 @@ tokenizer = BertTokenizerFast.from_pretrained("../my_tokenizer")
 
 
 def gen_dialog():
-    with open('data/multi.json', 'r', encoding='utf-8') as f:
+    with open('/home/sdc/cyye/DialogData/multi/cleaned.json', 'r', encoding='utf-8') as f:
         dialogs = json.load(f)
         for dialog in dialogs:
             yield {"dialog": dialog}
@@ -35,13 +35,13 @@ def map_function(example):
 def get_dataset():
     dataset = Dataset.from_generator(gen_dialog)
     # dataset = dataset.select(range(2000))
-    return dataset.train_test_split(test_size=0.01)
+    return dataset.train_test_split(test_size=10000)
 
 
 def preprocess():
     uttr_dataset = get_dataset()
     tokenized_dataset = uttr_dataset.map(map_function, num_proc=8)
-    tokenized_dataset.save_to_disk("tokenized-multi")
+    tokenized_dataset.save_to_disk("tokenized-multi-large")
 
 
 if __name__ == "__main__":
