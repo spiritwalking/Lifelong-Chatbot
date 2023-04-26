@@ -1,15 +1,13 @@
 from generate import chat
 import gradio as gr
-from transformers import GPT2LMHeadModel
-from transformers import BertTokenizerFast
 
 
 def user(user_message, history):
     return "", history + [[user_message, None]]
 
 
-def bot(history, top_p):
-    _, history = chat(history, top_p=top_p)
+def bot(history, top_p, temperature):
+    _, history = chat(history, top_p=top_p, temperature=temperature)
     return history
 
 
@@ -21,10 +19,10 @@ def web_demo():
 
         # max_history_len = gr.Slider(0, 5, value=2, step=1, label="Maximum history length", interactive=True)
         # repetition_penalty = gr.Slider(1.0, 3.0, value=1.0, step=0.05, label="Repetition penalty", interactive=True)
-        # temperature = gr.Slider(0, 1, value=1, step=0.01, label="Temperature", interactive=True)
-        top_p = gr.Slider(0, 1, value=1, step=0.01, label="Top p", interactive=True)
+        temperature = gr.Slider(0, 2, value=0.7, step=0.05, label="Temperature", interactive=True)
+        top_p = gr.Slider(0, 1, value=0.9, step=0.01, label="Top p", interactive=True)
         msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(
-            bot, [chatbot, top_p], chatbot
+            bot, [chatbot, top_p, temperature], chatbot
         )
         clear.click(lambda: [], None, chatbot, queue=False)
 
