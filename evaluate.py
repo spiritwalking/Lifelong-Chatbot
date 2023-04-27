@@ -6,16 +6,16 @@ import os
 import warnings
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-set_seed(42)
 warnings.filterwarnings("ignore")
 
-checkpoint = "from_scratch/gpt-2-multi2/checkpoint-300000"
+checkpoint = "from_scratch/gpt-2-multi-large/checkpoint-470000"
 tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer")
 model = GPT2LMHeadModel.from_pretrained(checkpoint)
 
+
 def main():
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    uttr_dataset = load_from_disk("from_scratch/tokenized-single")
+    uttr_dataset = load_from_disk("from_scratch/tokenized-single-large")
     training_args = TrainingArguments(
         output_dir='from_scratch/test-gpt2',
         resume_from_checkpoint=checkpoint,

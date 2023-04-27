@@ -1,6 +1,6 @@
-vocab
+chitchat/vocab
 sample
-from_scratch/model
+chitchat/model
 from_scratch/data
 from_scratch/logs
 finetune/model

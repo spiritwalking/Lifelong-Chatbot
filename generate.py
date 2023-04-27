@@ -2,8 +2,8 @@ import torch
 from transformers import GPT2LMHeadModel, BertTokenizerFast, set_seed
 import torch.nn.functional as F
 
-model = GPT2LMHeadModel.from_pretrained("from_scratch/gpt-2-multi-large/checkpoint-270000", )
-tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer", padding_side="left")
+model = GPT2LMHeadModel.from_pretrained("from_scratch/gpt-2-multi-large/checkpoint-470000")
+tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer")
 
 speaker1_id, speaker2_id = tokenizer.additional_special_tokens_ids
 cls, sep = tokenizer.cls_token_id, tokenizer.sep_token_id
@@ -54,7 +54,7 @@ def build_input(history, max_history_len):
     return prompt
 
 
-def chat(history, top_p=0.9, temperature=0.7, repetition_penalty=1.0, max_history_len=1, max_new_tokens=50):
+def chat(history, top_p=0.9, temperature=0.7, repetition_penalty=1.0, max_history_len=2, max_new_tokens=50):
     prompt = build_input(history, max_history_len)
     prompt = update_prompt(prompt, speaker2_id, speaker2_id)
     response = []
