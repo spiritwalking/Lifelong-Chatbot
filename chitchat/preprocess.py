@@ -3,9 +3,6 @@ import argparse
 import pickle
 from tqdm import tqdm
 import numpy as np
-import sys
-
-sys.path.append("..")
 from utils import create_logger
 
 

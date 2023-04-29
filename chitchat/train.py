@@ -1,17 +1,13 @@
 import argparse
 import torch
-import torch.optim as optim
 from datetime import datetime
 import os
 from os.path import join, exists
 import torch.nn as nn
 import transformers
-import sys
 from transformers import GPT2LMHeadModel, GPT2Config
 from transformers import BertTokenizerFast
 from data_loader import get_dataloader
-
-sys.path.append("..")
 from utils import EarlyStopping, create_logger, collate_fn, save_model, fix_seed, calculate_acc
 
 

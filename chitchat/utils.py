@@ -24,8 +24,7 @@ def create_logger(log_path):
         '%(asctime)s - %(levelname)s - %(message)s')
 
     # 创建一个handler，用于写入日志文件
-    file_handler = logging.FileHandler(
-        filename=log_path)
+    file_handler = logging.FileHandler(filename=log_path)
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)
     logger.addHandler(file_handler)
