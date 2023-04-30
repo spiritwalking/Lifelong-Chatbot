@@ -4,10 +4,9 @@ import torch.nn.functional as F
 
 
 class EWC(object):
-    def __init__(self, model, dataloaders, device):
+    def __init__(self, model, dataloaders):
         self.model = model
         self.dataloaders = dataloaders
-        self.device = device
 
         self.params = {n: p for n, p in self.model.named_parameters() if
                        p.requires_grad}  # extract all parameters in models
@@ -27,12 +26,11 @@ class EWC(object):
         if len(self.dataloaders) > 0:
             number_data = sum([len(loader) for loader in self.dataloaders])
             for dataloader in self.dataloaders:
-                for data in dataloader:
+                for batch in dataloader:
                     self.model.zero_grad()
-                    input_ids = data[0].to(self.device)
-                    labels = data[1].to(self.device)
-                    output = self.model(input_ids, labels=labels)
-                    # print(output.shape, label.shape)
+                    for key in batch:
+                        batch[key] = batch[key].cuda()
+                    output = self.model(**batch)
 
                     ############################################################################
                     #####                     generate Fisher(F) matrix for EWC            #####
