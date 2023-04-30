@@ -2,7 +2,10 @@ import torch
 from transformers import GPT2LMHeadModel, BertTokenizerFast, set_seed
 import torch.nn.functional as F
 
-model = GPT2LMHeadModel.from_pretrained("from_scratch/gpt-2-multi-large/checkpoint-470000")
+multi_bot = "from_scratch/gpt-2-multi-large/checkpoint-470000"
+upper_bot = "finetune/upperbound_model/min_ppl_model"
+
+model = GPT2LMHeadModel.from_pretrained(upper_bot)
 tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer")
 
 speaker1_id, speaker2_id = tokenizer.additional_special_tokens_ids

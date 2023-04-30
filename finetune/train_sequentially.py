@@ -1,19 +1,20 @@
 import argparse
 import torch
-import torch.optim as optim
-from datetime import datetime
 import os
 from os.path import join, exists
 import torch.nn as nn
 import transformers
-import sys
-from transformers import GPT2LMHeadModel
-from transformers import BertTokenizerFast
+from transformers import GPT2LMHeadModel, BertTokenizerFast, set_seed
 from data_loader import get_training_loader
+from tqdm import tqdm
+from utils import create_logger, save_model
+from my_data_loader import get_dataloader
 from ewc import EWC
+import warnings
 
-sys.path.append("..")
-from utils import create_logger, collate_fn, save_model, fix_seed, calculate_acc
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+set_seed(42)
+warnings.filterwarnings("ignore")
 
 
 def set_args():

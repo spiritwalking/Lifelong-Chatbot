@@ -39,7 +39,7 @@ def get_dataset():
     dataset = dataset.class_encode_column("topic")  # change type(label) from String to ClassLabel
     topic2label = {'音乐': 0, '电影': 1, '旅行': 2, '科技': 3, '体育': 4}
     dataset_aligned = dataset.align_labels_with_mapping(topic2label, 'topic')
-    return dataset_aligned.train_test_split(test_size=0.2)
+    return dataset_aligned.train_test_split(test_size=2000)
 
 
 def preprocess():

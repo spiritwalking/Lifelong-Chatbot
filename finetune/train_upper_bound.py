@@ -1,7 +1,5 @@
 import argparse
 import torch
-import torch.optim as optim
-from datetime import datetime
 import os
 from os.path import join, exists
 import torch.nn as nn
@@ -18,22 +16,18 @@ set_seed(42)
 warnings.filterwarnings("ignore")
 
 
-
-
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tokenizer_path', default='../my_tokenizer', type=str, help='tokenizer路径')
     parser.add_argument('--model_path', default='../from_scratch/gpt-2-multi-large/checkpoint-470000', type=str,
                         help='预训练的模型的路径')
-    parser.add_argument('--save_path', default='model', type=str, help='模型保存路径')
+    parser.add_argument('--save_path', default='upperbound_model', type=str, help='模型保存路径')
     parser.add_argument('--train_folder', default='tokenized-data', type=str, help='训练语料路径')
-
-    parser.add_argument('--log_path', default='logs/train.log', type=str, help='训练日志存放位置')
-    parser.add_argument('--epochs', default=30, type=int, help='训练的最大轮次')
+    parser.add_argument('--log_path', default='logs/finetune.log', type=str, help='训练日志存放位置')
+    parser.add_argument('--epochs', default=10, type=int, help='训练的最大轮次')
     parser.add_argument('--batch_size', default=8, type=int, help='训练的batch size')
-    parser.add_argument('--lr', default=2.6e-5, type=float, help='学习率')
-    parser.add_argument('--eps', default=1.0e-09, type=float, help='衰减率')
-    parser.add_argument('--log_step', default=1, type=int, help='多少步汇报一次loss')
+    parser.add_argument('--lr', default=3e-5, type=float, help='学习率')
+    parser.add_argument('--log_step', default=32, type=int, help='多少步汇报一次loss')
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help='梯度积累')
     args = parser.parse_args()
     return args
@@ -41,8 +35,7 @@ def set_args():
 
 def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, args):
     model.train()
-    epoch_start_time = datetime.now()
-    train_loss = 0  # 记录下整个epoch的loss的总和
+    epoch_loss = 0  # 记录下整个epoch的loss的总和
 
     for batch_idx, batch in enumerate(tqdm(train_dataloader)):
         # 捕获cuda out of memory exception
@@ -52,13 +45,15 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
             outputs = model(**batch)
             loss = outputs.loss.mean()
 
-            train_loss += loss.item()
+            batch_loss = loss.item()
+            epoch_loss += batch_loss
+            current_lr = scheduler.get_lr()
+
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
 
             # 反向传播，累积梯度
             loss.backward()
-
             # 进行一定step的梯度累积之后，梯度下降更新参数
             if (batch_idx + 1) % args.gradient_accumulation_steps == 0:
                 optimizer.step()
@@ -67,7 +62,7 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
 
             if (batch_idx + 1) % args.log_step == 0:
                 logger.info("batch {} of epoch {}, loss {:.6}, lr {}".format(
-                    batch_idx + 1, epoch + 1, loss.item() * args.gradient_accumulation_steps, scheduler.get_lr()))
+                    batch_idx + 1, epoch + 1, batch_loss, current_lr))
 
         except RuntimeError as exception:
             if "out of memory" in str(exception):
@@ -78,46 +73,34 @@ def train_epoch(model, train_dataloader, optimizer, scheduler, logger, epoch, ar
                 logger.info(str(exception))
                 raise exception
 
-    # 记录当前epoch的平均loss与accuracy
-    epoch_mean_loss = train_loss / len(train_dataloader)
+    # 记录当前epoch的平均loss
+    epoch_mean_loss = epoch_loss / len(train_dataloader)
     logger.info("epoch {}: loss {:.6}".format(epoch + 1, epoch_mean_loss))
 
     # save model
     logger.info('saving model for epoch {}'.format(epoch + 1))
-    model_path = join(args.save_model_path, 'epoch{}'.format(epoch + 1))
+    model_path = join(args.save_path, 'epoch{}'.format(epoch + 1))
     save_model(model_path, model)
-
-    epoch_finish_time = datetime.now()
-    logger.info('epoch {} finished, spend time: {}'.format(epoch + 1, epoch_finish_time - epoch_start_time))
-
     return epoch_mean_loss
 
 
 def validate_epoch(model, validation_dataloader, logger, epoch, args):
     logger.info("start validating")
     model.eval()
-    device = args.device
-    epoch_start_time = datetime.now()
-    val_loss = 0
+    epoch_loss = 0
     # 捕获cuda out of memory exception
     try:
         with torch.no_grad():
-            for batch_idx, (input_ids, labels) in enumerate(validation_dataloader):
-                input_ids = input_ids.to(device)
-                labels = labels.to(device)
-                outputs = model(input_ids, labels=labels)
-                logits = outputs.logits
-                loss = outputs.loss
-                loss = loss.mean()
-
-                val_loss += loss.item()
-                del input_ids, outputs
+            for batch_idx, batch in enumerate(tqdm(validation_dataloader)):
+                for key in batch:
+                    batch[key] = batch[key].cuda()
+                outputs = model(**batch)
+                loss = outputs.loss.mean()
+                epoch_loss += loss.item()
 
             # 记录当前epoch的平均loss
-            epoch_mean_loss = val_loss / len(validation_dataloader)
+            epoch_mean_loss = epoch_loss / len(validation_dataloader)
             logger.info("validate epoch {}: loss {}".format(epoch + 1, epoch_mean_loss))
-            epoch_finish_time = datetime.now()
-            logger.info('time for validating one epoch: {}'.format(epoch_finish_time - epoch_start_time))
             return epoch_mean_loss
 
     except RuntimeError as exception:
@@ -132,10 +115,10 @@ def validate_epoch(model, validation_dataloader, logger, epoch, args):
 
 def train_model(model, logger, train_dataloader, validation_dataloader, args):
     total_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.epochs
-    optimizer = transformers.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
+    optimizer = transformers.AdamW(model.parameters(), lr=args.lr)
     scheduler = transformers.get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=1000, num_training_steps=total_steps)
-    logger.info('starting training')
+        optimizer, num_warmup_steps=200, num_training_steps=total_steps)
+    logger.info(f'starting training with total steps: {total_steps}')
 
     # 用于记录每个epoch训练和验证的loss
     train_losses, validate_losses = [], []
@@ -152,15 +135,14 @@ def train_model(model, logger, train_dataloader, validation_dataloader, args):
                                        epoch=epoch, args=args)
         validate_losses.append(validate_loss)
 
-        # 保存当前困惑度最低的模型，困惑度低，模型的生成效果不一定会越好
+        # 保存当前困惑度最低的模型
         if validate_loss < best_val_loss:
             best_val_loss = validate_loss
-            logger.info('saving current best model for epoch {}'.format(epoch + 1))
-            model_path = join(args.save_model_path, 'min_ppl_model'.format(epoch + 1))
+            logger.info('saving current best model of epoch {}'.format(epoch + 1))
+            model_path = join(args.save_path, 'min_ppl_model'.format(epoch + 1))
             save_model(model_path, model)
 
     logger.info('training finished')
-    save_model(args.save_model_path, model)
     logger.info("train_losses:{}".format(train_losses))
     logger.info("validate_losses:{}".format(validate_losses))
 

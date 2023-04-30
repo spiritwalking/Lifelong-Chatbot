@@ -16,12 +16,6 @@ def create_logger(log_path):
     file_handler.setLevel(logging.INFO)
     logger.addHandler(file_handler)
 
-    # 创建一个handler，用于将日志输出到控制台
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-
     return logger
 
 
