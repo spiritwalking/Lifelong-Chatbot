@@ -21,7 +21,7 @@ def set_args():
     parser.add_argument('--tokenizer_path', default='../my_tokenizer', type=str, help='tokenizer路径')
     parser.add_argument('--model_path', default='../from_scratch/gpt-2-multi-large/checkpoint-470000', type=str,
                         help='预训练的模型的路径')
-    parser.add_argument('--save_path', default='upperbound_model', type=str, help='模型保存路径')
+    parser.add_argument('--save_path', default='models/upperbound_model', type=str, help='模型保存路径')
     parser.add_argument('--train_folder', default='tokenized-data', type=str, help='训练语料路径')
     parser.add_argument('--log_path', default='logs/finetune.log', type=str, help='训练日志存放位置')
     parser.add_argument('--epochs', default=10, type=int, help='训练的最大轮次')

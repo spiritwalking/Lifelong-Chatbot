@@ -22,15 +22,15 @@ def set_args():
     parser.add_argument('--tokenizer_path', default='../my_tokenizer', type=str, help='tokenizer路径')
     parser.add_argument('--model_path', default='../from_scratch/gpt-2-multi-large/checkpoint-470000', type=str,
                         help='预训练的模型的路径')
-    parser.add_argument('--save_path', default='ewc_model', type=str, help='模型保存路径')
+    parser.add_argument('--save_path', default='models/ewc_model', type=str, help='模型保存路径')
     parser.add_argument('--train_folder', default='tokenized-data', type=str, help='训练语料路径')
     parser.add_argument('--log_path', default='logs/ewc.log', type=str, help='训练日志存放位置')
-    parser.add_argument('--epochs', default=5, type=int, help='训练的最大轮次')
+    parser.add_argument('--epochs', default=10, type=int, help='训练的最大轮次')
     parser.add_argument('--batch_size', default=8, type=int, help='训练的batch size')
-    parser.add_argument('--lr', default=2e-5, type=float, help='学习率')
+    parser.add_argument('--lr', default=3e-5, type=float, help='学习率')
     parser.add_argument('--log_step', default=32, type=int, help='多少步汇报一次loss')
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help='梯度积累')
-    parser.add_argument('--ewc_lambda', type=int, default=0, help="正则项系数")
+    parser.add_argument('--ewc_lambda', type=int, default=1e5, help="正则项系数")
     args = parser.parse_args()
     return args
 
@@ -40,7 +40,7 @@ def train_epoch(model, train_dataloader, optimizer, logger, epoch, args, ewc_obj
     epoch_loss = 0  # 记录下整个epoch的loss的总和
     epoch_ewc_loss = []  # 记录整个epoch的ewc的loss
 
-    for batch_idx, batch in enumerate(tqdm(train_dataloader)):
+    for batch_idx, batch in enumerate(train_dataloader):
         # 捕获cuda out of memory exception
         try:
             for key in batch:
@@ -114,7 +114,7 @@ def train_task(model, logger, train_dataloader, val_dataloaders, args, ewc_objec
     optimizer = transformers.AdamW(model.parameters(), lr=args.lr)
     logger.info(f'starting training with total steps: {total_steps}')
 
-    for epoch in range(args.epochs):
+    for epoch in tqdm(range(args.epochs)):
         validate_losses = []
         # train
         train_epoch(model=model, train_dataloader=train_dataloader, optimizer=optimizer, logger=logger, epoch=epoch,
@@ -151,7 +151,7 @@ def main():
 
     # 记录参数设置
     logger.info("args:{}".format(args))
-    train_dataloaders, validation_dataloaders = get_task_dataloaders(tokenizer, args)
+    train_dataloaders, validation_dataloaders = get_task_dataloaders(tokenizer, args.batch_size)
     args.current_task = 0
     ewc_object = EWC(model=model, dataloaders=[])
 
