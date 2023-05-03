@@ -14,7 +14,7 @@ def gen_dialog():
             yield {'dialog': dialog['text'], 'topic': dialog['topic']}
 
 
-def map_function(example):
+def map_function(example, idx):
     """
     input_ids: [CLS][speaker1]你好[SEP][speaker2]很高兴认识你[SEP][speaker1]我也是[SEP][speaker2]哈哈[SEP]
     """
@@ -31,7 +31,7 @@ def map_function(example):
     length = len(input_ids)
     # print(tokenizer.decode(input_ids))
 
-    return {'input_ids': input_ids, 'token_type_ids': speaker_ids, 'length': length}
+    return {'input_ids': input_ids, 'token_type_ids': speaker_ids, 'length': length, 'id': idx}
 
 
 def get_dataset():
@@ -44,7 +44,7 @@ def get_dataset():
 
 def preprocess():
     uttr_dataset = get_dataset()
-    tokenized_dataset = uttr_dataset.map(map_function, num_proc=8)
+    tokenized_dataset = uttr_dataset.map(map_function, with_indices=True, num_proc=8)
     tokenized_dataset.save_to_disk("tokenized-data")
 
 

@@ -30,7 +30,7 @@ def set_args():
     parser.add_argument('--lr', default=3e-5, type=float, help='学习率')
     parser.add_argument('--log_step', default=32, type=int, help='多少步汇报一次loss')
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help='梯度积累')
-    parser.add_argument('--ewc_lambda', type=int, default=1e5, help="正则项系数")
+    parser.add_argument('--ewc_lambda', type=float, default=2.5e5, help="正则项系数")
     args = parser.parse_args()
     return args
 
@@ -38,7 +38,7 @@ def set_args():
 def train_epoch(model, train_dataloader, optimizer, logger, epoch, args, ewc_object):
     model.train()
     epoch_loss = 0  # 记录下整个epoch的loss的总和
-    epoch_ewc_loss = []  # 记录整个epoch的ewc的loss
+    epoch_ewc_loss = 0  # 记录整个epoch的ewc的loss
 
     for batch_idx, batch in enumerate(train_dataloader):
         # 捕获cuda out of memory exception
@@ -52,7 +52,7 @@ def train_epoch(model, train_dataloader, optimizer, logger, epoch, args, ewc_obj
 
             batch_loss = loss.item()
             epoch_loss += batch_loss
-            epoch_ewc_loss.append(ewc_loss.item())
+            epoch_ewc_loss += ewc_loss.item()
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -78,8 +78,9 @@ def train_epoch(model, train_dataloader, optimizer, logger, epoch, args, ewc_obj
 
     # 记录当前epoch的平均loss
     epoch_mean_loss = epoch_loss / len(train_dataloader)
-    epoch_mean_ewc_loss = sum(epoch_ewc_loss) / len(epoch_ewc_loss)
-    logger.info("epoch {} training finished: loss {:.6}, ewc loss {:.6}".format(epoch + 1, epoch_mean_loss, epoch_mean_ewc_loss))
+    epoch_mean_ewc_loss = epoch_ewc_loss / len(train_dataloader)
+    logger.info("epoch {} training finished: loss {:.6}, ewc loss {:.6}".format(epoch + 1, epoch_mean_loss,
+                                                                                epoch_mean_ewc_loss))
 
 
 def validate_epoch(model, validation_dataloader, logger, args):
