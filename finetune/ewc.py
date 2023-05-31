@@ -27,6 +27,7 @@ class EWC(object):
             for dataloader in self.dataloaders:
                 for batch in dataloader:
                     self.model.zero_grad()
+                    batch.pop('id', None)
                     for key in batch:
                         batch[key] = batch[key].cuda()
                     output = self.model(**batch)

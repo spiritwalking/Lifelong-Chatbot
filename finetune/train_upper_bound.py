@@ -5,10 +5,9 @@ from os.path import join, exists
 import torch.nn as nn
 import transformers
 from transformers import GPT2LMHeadModel, BertTokenizerFast, set_seed
-from data_loader import get_training_loader
 from tqdm import tqdm
 from utils import create_logger, save_model
-from my_data_loader import get_dataloader
+from data_loader import get_dataloader
 import warnings
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"

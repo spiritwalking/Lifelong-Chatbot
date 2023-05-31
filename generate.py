@@ -3,9 +3,10 @@ from transformers import GPT2LMHeadModel, BertTokenizerFast, set_seed
 import torch.nn.functional as F
 
 multi_bot = "from_scratch/gpt-2-multi-large/checkpoint-470000"
-upper_bot = "finetune/upperbound_model/min_ppl_model"
+upper_bot = "finetune/models/upperbound_model"
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-model = GPT2LMHeadModel.from_pretrained(upper_bot)
+model = GPT2LMHeadModel.from_pretrained(upper_bot).to(device)
 tokenizer = BertTokenizerFast.from_pretrained("my_tokenizer")
 
 speaker1_id, speaker2_id = tokenizer.additional_special_tokens_ids
@@ -33,8 +34,8 @@ def topp_filtering(logits, top_p, filter_value=-float('Inf')):
 
 
 def update_prompt(prompt, next_token_id, next_speaker_id):
-    prompt['input_ids'] = torch.cat((prompt['input_ids'], torch.tensor([[next_token_id]])), dim=1)
-    prompt['token_type_ids'] = torch.cat((prompt['token_type_ids'], torch.tensor([[next_speaker_id]])), dim=1)
+    prompt['input_ids'] = torch.cat((prompt['input_ids'], torch.tensor([[next_token_id]], device=device)), dim=1)
+    prompt['token_type_ids'] = torch.cat((prompt['token_type_ids'], torch.tensor([[next_speaker_id]], device=device)), dim=1)
     return prompt
 
 
@@ -52,17 +53,17 @@ def build_input(history, max_history_len):
             input_ids.extend(prev_response)
             speaker_ids.extend([speaker2_id] * len(prev_response))
 
-    prompt["input_ids"] = torch.tensor(input_ids, dtype=torch.long).unsqueeze(0)  # [[CLS, s1, id0, id1... SEP]]
-    prompt["token_type_ids"] = torch.tensor(speaker_ids, dtype=torch.long).unsqueeze(0)
+    prompt["input_ids"] = torch.tensor(input_ids, dtype=torch.long, device=device).unsqueeze(0)  # [[CLS, s1, id0, id1... SEP]]
+    prompt["token_type_ids"] = torch.tensor(speaker_ids, dtype=torch.long, device=device).unsqueeze(0)
     return prompt
 
 
-def chat(history, top_p=0.9, temperature=0.7, repetition_penalty=1.0, max_history_len=2, max_new_tokens=50):
+def chat(history, chat_model=model, top_p=0.9, temperature=0.7, repetition_penalty=1.0, max_history_len=2, max_new_tokens=50):
     prompt = build_input(history, max_history_len)
     prompt = update_prompt(prompt, speaker2_id, speaker2_id)
     response = []
     for _ in range(max_new_tokens):
-        outputs = model(**prompt)
+        outputs = chat_model(**prompt)
         logits = outputs.logits
         next_token_logits = logits[0, -1, :]
 

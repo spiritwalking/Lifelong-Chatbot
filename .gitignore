@@ -1,12 +1,9 @@
-chitchat/vocab
-sample
 chitchat/model
-from_scratch/data
-from_scratch/logs
-finetune/model
+chitchat/data
+from_scratch/gpt-2-large
+from_scratch/gpt-2-multi-large
+finetune/models
 finetune/data
-finetune/logs
-finetune/gpt-2
 .DS_Store
 .idea
 __pycache__
